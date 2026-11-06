@@ -1,0 +1,357 @@
+"""11-02 SetMatch v5: image / box-level candidates, open-world decision, Market-1501 and CUHK-SYSU (GT boxes).
+Candidates are gallery IMAGES (Market) or person BOXES inside gallery images (CUHK-SYSU), so one identity can occur
+several times in a candidate set -- the situation in which candidate-candidate evidence can matter.
+Episodes
+  market: K = number of gallery identities (all their images; target images from other cameras only); test K in
+          {10, 50, 100, 200, full}, train K in {10, 20, 50, 100, 200, full} on train identities.
+  cuhk:   K = number of gallery images (official TestG50..4000 lists at test; E = 0 removes the images that contain the
+          target); train: Train-split persons that never appear in test images, G in {50, 100, 200, 500}.
+Every method returns (choice, confidence); an open-world decision is correct iff it accepts a true target or rejects
+when no target is present. Baselines choose the cosine top-1.
+Variants (identical pair tokens [q*c, |q-c|, c, s]):
+  pair_bce  independent per-pair verifier (sigmoid), no set-relative input
+  pair_null softmax over candidates + a learned NULL vector, no set-relative input
+  ctx       + set context (log N, score quantiles), rank / percentile features, set-pooled NULL token
+  attn      + Transformer attention between candidates
+  setmatch  + candidate-affinity bias cos(c_i, c_j) in every attention head (learned per-head scale)
+  <kind>_cal (v6) cardinality-calibrated inputs: the set context drops log N and score quantiles and uses the
+            order-statistic tail t(s) = -log10(1 - F0(s)^N) of the top scores (F0 = impostor-score CDF from train
+            episodes) plus N-free shape statistics; the percentile feature is replaced by t(s_i). Nothing grows with N.
+  evt       (v6 baselines, cosine top-1) wscore: Meta-Recognition (Scheirer et al., TPAMI 2011) -- Weibull fitted to
+            the top-n non-match tail s_2..s_{n+1} of each list, confidence = its CDF at s_1; qnull: query-local null --
+            Gaussian fitted to the ranks below the top-m, confidence = -log10(1 - Phi(z_1)^N). No training.
+  --trk / --tag (v6) override the training K grid; outputs get the tag appended to the variant name.
+Outputs results/setmatch/v5/<data>_<enc>_<variant>.npz (per test episode: conf, correct, ap, r1) and
+<data>_<enc>_meta.npz (E, K, cosine baselines) written by the 'base' run."""
+import argparse
+import math
+import os
+
+import numpy as np
+import torch
+import torch.nn as nn
+from scipy.stats import kurtosis, norm, skew, weibull_min
+
+R = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+O = os.path.join(R, "results/setmatch")
+M = 64
+dev = "cuda"
+
+
+# ---------------------------------------------------------------- data
+class Dom:
+    """queries Fq/qpid, gallery items Fg/gpid; sample(i, E, K, rng) -> (items, target mask)"""
+
+
+def market(enc, split, name="market"):                            # 11-04: name="rpif" (RPIfield, CF) uses the same layout
+    z = np.load(os.path.join(O, "feats", f"{name}_{enc}.npz")); f = z["f"].astype(np.float32); pid, cam, sp = z["pid"], z["cam"], z["split"]
+    D = Dom(); rng = np.random.default_rng(0)
+    if split == "train":
+        g = np.flatnonzero((sp == 0) & (pid > 0)); q = []
+        for key in np.unique(pid[g] * 100 + cam[g]):            # 11-06: *100 (was *10) so pid*k+cam does not collide for MSMT17's 15 cameras
+            q.append(rng.choice(g[pid[g] * 100 + cam[g] == key]))
+        q = np.array(q)
+    else:
+        g = np.flatnonzero((sp == 1) & (pid > 0)); q = np.flatnonzero(sp == 2)
+    D.Fq, D.qpid, D.qcam, D.qimg = f[q], pid[q], cam[q], q
+    D.Fg, D.gpid, D.gcam = f[g], pid[g], cam[g]
+    D.ids = np.unique(D.gpid); D.items = {p: np.flatnonzero(D.gpid == p) for p in D.ids}
+    D.ok = np.array([(D.gcam[D.items.get(p, np.zeros(0, int))] != c).any() for p, c in zip(D.qpid, D.qcam)])
+
+    def sample(i, E, K, rng):
+        p = D.qpid[i]; pool = D.ids[D.ids != p]
+        sel = pool if K == 0 else rng.choice(pool, min(K - E, len(pool)), replace=False)
+        it = np.concatenate([D.items[s] for s in sel])
+        if E:
+            t = D.items[p]; t = t[D.gcam[t] != D.qcam[i]]; it = np.concatenate([it, t])
+        return it, (D.gpid[it] == p)
+    D.sample = sample
+    return D
+
+
+def scene(enc, split, name="cuhk", qpp=1):
+    """CUHK-SYSU / PRW with GT boxes (cuhk, prw) or frozen proposals (cuhkdet, prwdet: gallery = proposals, queries =
+    GT boxes stored with gal = 0)"""
+    z = np.load(os.path.join(O, f"{name}_index.npz")); f = np.load(os.path.join(O, "feats", f"{name}_{enc}.npz"))["f"].astype(np.float32)
+    img, pid, sp = z["img"], z["pid"], z["split"]; det = "gal" in z; gal = z["gal"] if det else np.ones(len(img), bool)
+    boxes_of = {}
+    for b in np.flatnonzero(gal):
+        boxes_of.setdefault(int(img[b]), []).append(b)
+    boxes_of = {k: np.array(v) for k, v in boxes_of.items()}
+    D = Dom(); D.Fg, D.gpid, D.det = f, pid, det
+    if split == "train":
+        test_p = set(pid[(sp == 1) & (pid > 0)]); rng = np.random.default_rng(0); cand_q = []
+        tr_imgs = np.array(sorted(k for k in boxes_of if (sp[boxes_of[k]] == 0).all()))
+        src = ~gal if det else gal                                 # query / target-image source: GT boxes
+        for p in np.unique(pid[(sp == 0) & (pid > 0) & src]):
+            bs = np.flatnonzero((pid == p) & (sp == 0) & src)
+            if p in test_p or len(bs) < 2:
+                continue
+            cand_q.extend(rng.choice(bs, min(qpp, len(bs)), replace=False))   # qpp query boxes per training person
+        q = np.array(cand_q); D.pimgs = {}
+        for b in q:
+            D.pimgs[b] = np.unique(img[(pid == pid[b]) & (img != img[b]) & src])
+        D.Fq, D.qpid, D.qbox = f[q], pid[q], q; D.ok = np.ones(len(q), bool)
+
+        def sample(i, E, G, rng):
+            b = D.qbox[i]; t = D.pimgs[b]; t = t[np.isin(t, tr_imgs)]; others = tr_imgs[~np.isin(tr_imgs, np.r_[t, img[b]])]
+            ims = np.r_[t[:G], rng.choice(others, max(G - len(t), 1), replace=False)] if E else rng.choice(others, G, replace=False)
+            it = np.concatenate([boxes_of[int(k)] for k in ims]); return it, (pid[it] == pid[b])
+        D.sample = sample
+    else:
+        D.test = {}; Gs = sorted(int(k[1:-2]) for k in z.files if k.startswith("G") and k.endswith("_q"))
+        for G in Gs:
+            D.test[G] = (z[f"G{G}_q"], z[f"G{G}_gal"], z[f"G{G}_has"])
+        q = z[f"G{Gs[0]}_q"]; D.Fq, D.qpid, D.qbox = f[q], pid[q], q; D.ok = np.ones(len(q), bool); D.Gs = tuple(Gs)
+        assert all((z[f"G{G}_q"] == q).all() for G in D.test), "TestG query order differs across gallery sizes"
+
+        def sample(i, E, G, rng):
+            qs, galr, has = D.test[G]; r = i                      # query order is identical across TestG files
+            ims = galr[r] if E else galr[r][~has[r]]
+            it = np.concatenate([boxes_of[int(k)] for k in ims if int(k) in boxes_of]); return it, (pid[it] == D.qpid[i])
+        D.sample = sample
+        D.ngt = lambda i, G: int(D.test[G][2][i].sum())            # target images in the gallery (recall denominator)
+    return D
+
+
+TRK = dict(market=(10, 20, 50, 100, 200, 0), cuhk=(50, 100, 200, 500), cuhkdet=(50, 100, 200, 500), prw=(50, 100, 200, 500, 1000),
+           prwdet=(50, 100, 200, 500, 1000), cuhkseq=(50, 100, 200, 500), prwseq=(50, 100, 200, 500, 1000))
+TEK = dict(market=(10, 50, 100, 200, 0), cuhk=(50, 100, 500, 1000, 2000, 4000), rpif=(10, 100, 500, 1000, 0))
+TRK["rpif"] = (10, 20, 50, 100, 200)                               # 11-04 CF: RPIfield confirmatory evaluation
+TRK["msmt"] = (10, 20, 50, 100, 200, 0); TEK["msmt"] = (10, 100, 500, 1000, 0)   # 11-04 CF2: MSMT17 (0 = full gallery)
+
+
+def restrict_ids(D, n, seed=0):
+    """11-04 IDS: keep only n training identities as possible queries (their positives with them); impostors unchanged"""
+    ids = np.unique(D.qpid[D.ok]); keep = np.random.default_rng(seed).choice(ids, min(n, len(ids)), replace=False)
+    D.ok = D.ok & np.isin(D.qpid, keep); return D
+
+
+def episodes(D, Ks, n, seed):
+    g = np.random.default_rng(seed); qs = np.flatnonzero(D.ok); qs = qs if n is None else g.choice(qs, n, replace=n > len(qs))
+    out = []
+    for i in qs:
+        for K in Ks:
+            for E in (0, 1):
+                it, tm = D.sample(i, E, K, g)
+                if len(it) < 2 or (E and not tm.any() and not getattr(D, "det", False)):
+                    continue
+                s = D.Fg[it] @ D.Fq[i]; o = np.argsort(-s)
+                ngt = D.ngt(i, K) if hasattr(D, "ngt") and E else int(tm.sum())   # proposals: missed targets cost recall
+                out.append((i, it[o].astype(np.int32), tm[o], s[o].astype(np.float32), E, K, ngt))
+    return out
+
+
+# ---------------------------------------------------------------- model
+class Blk(nn.Module):
+    def __init__(self, h, nh=4, aff=False):
+        super().__init__(); self.nh = nh; self.qkv = nn.Linear(h, 3 * h); self.o = nn.Linear(h, h)
+        self.f = nn.Sequential(nn.Linear(h, 4 * h), nn.GELU(), nn.Linear(4 * h, h)); self.n1 = nn.LayerNorm(h); self.n2 = nn.LayerNorm(h)
+        self.aff = nn.Parameter(torch.zeros(nh)) if aff else None
+
+    def forward(self, t, A, pad):                                   # t [B, L, h]; A [B, L, L]; pad [B, L] True = pad
+        B, L, h = t.shape; q, k, v = self.qkv(self.n1(t)).view(B, L, 3, self.nh, h // self.nh).permute(2, 0, 3, 1, 4)
+        lg = q @ k.transpose(-1, -2) / (h // self.nh) ** 0.5
+        if self.aff is not None:
+            lg = lg + self.aff.view(1, -1, 1, 1) * A[:, None]
+        lg = lg.masked_fill(pad[:, None, None, :], -1e4); t = t + self.o((lg.softmax(-1) @ v).transpose(1, 2).reshape(B, L, h))
+        return t + self.f(self.n2(t))
+
+
+class Net(nn.Module):
+    def __init__(self, d, kind, h=128):
+        super().__init__(); self.kind = kind; self.cal = kind.endswith("_cal"); kind = kind.removesuffix("_cal")
+        self.cnull = kind == "attn_cn"; kind = kind.removesuffix("_cn")   # 11-04 ablation: attn with a constant (set-independent) no-match token
+        self.setrel = kind in ("ctx", "attn", "setmatch")
+        self.tok = nn.Linear(3 * d + 3, h); self.ctx = nn.Linear(7, h); self.null = nn.Parameter(torch.zeros(h))
+        self.pool = nn.Sequential(nn.Linear(2 * h, h), nn.GELU(), nn.Linear(h, h))
+        if kind in ("attn", "setmatch"):
+            self.blocks = nn.ModuleList([Blk(h, aff=kind == "setmatch") for _ in range(3)])
+        else:
+            self.blocks = nn.ModuleList([nn.Sequential(nn.LayerNorm(h), nn.Linear(h, 4 * h), nn.GELU(), nn.Linear(4 * h, h)) for _ in range(3)])
+        self.out = nn.Linear(h, 1)
+
+    def forward(self, X, C, A, pad):
+        if not self.setrel:
+            X = torch.cat([X[..., :-2], torch.zeros_like(X[..., -2:])], -1)
+        e = self.tok(X)
+        if self.setrel:
+            e = e + self.ctx(C)[:, None]
+            m = (~pad).float()[..., None]; mean = (e * m).sum(1) / m.sum(1); mx = e.masked_fill(pad[..., None], -1e4).max(1).values
+            z = self.null.expand(len(e), -1) if self.cnull else self.null + self.pool(torch.cat([mean, mx], -1))
+        else:
+            z = self.null.expand(len(e), -1)
+        t = torch.cat([e, z[:, None]], 1); padx = torch.cat([pad, torch.zeros_like(pad[:, :1])], 1)
+        Ax = nn.functional.pad(A, (0, 1, 0, 1))
+        for b in self.blocks:
+            t = b(t, Ax, padx) if isinstance(b, Blk) else t + b(t)
+        return self.out(t)[..., 0].masked_fill(padx, -1e4)
+
+
+def tail(F0, s, N):                                                # -log10 P(max of N impostors >= s), scaled to ~[0, 2]
+    F = np.clip(np.searchsorted(F0, s, side="right") / len(F0), 1e-9, 1 - 1e-9)
+    return np.clip(-np.log10(-np.expm1(N * np.log(F))) / 6, 0, 2)
+
+
+def batch(D, eps, cal=False):
+    d = D.Fq.shape[1]; B = len(eps); X = np.zeros((B, M, 3 * d + 3), np.float32); C = np.zeros((B, 7), np.float32)
+    A = np.zeros((B, M, M), np.float32); pad = np.ones((B, M), bool); P = np.zeros((B, M + 1), np.float32)
+    for b, (i, it, tm, s, E, K, *_) in enumerate(eps):
+        n = min(M, len(it)); c = D.Fg[it[:n]]; q = D.Fq[i]
+        X[b, :n, :d] = q * c; X[b, :n, d:2 * d] = np.abs(q - c); X[b, :n, 2 * d:3 * d] = c; X[b, :n, 3 * d] = s[:n]
+        X[b, :n, 3 * d + 1] = np.arange(n) / M; X[b, :n, 3 * d + 2] = np.arange(n) / len(s)
+        if cal:
+            t = tail(D.F0, s[:n], len(s)); X[b, :n, 3 * d + 2] = t
+            C[b] = [t[0], t[1], (s[0] - s.mean()) / (s.std() + 1e-6) / 5, s.mean(), s.std(), np.median(s), s[0] - s[1]]
+        else:
+            C[b] = [np.log(len(s)), s.mean(), s.std(), np.median(s), np.quantile(s, 0.9), np.quantile(s, 0.99), s[0]]
+        A[b, :n, :n] = c @ c.T; pad[b, :n] = False
+        if E and tm[:n].any():
+            P[b, :n] = tm[:n]
+        else:
+            P[b, M] = 1
+    tt = lambda a: torch.from_numpy(a).to(dev)
+    return tt(X), tt(C), tt(A), tt(pad), tt(P)
+
+
+def loss_fn(lg, P, pad, bce):
+    if bce:
+        return nn.functional.binary_cross_entropy_with_logits(lg[:, :M][~pad], P[:, :M][~pad])
+    return (torch.logsumexp(lg, 1) - torch.logsumexp(lg.masked_fill(P == 0, -1e4), 1)).mean()   # multi-positive CE
+
+
+def dg_loss(lg, P, o):
+    """11-06 Deep Gamblers (Liu et al., NeurIPS 2019) adapted to open-world matching: the no-match index M is the
+    reservation (abstain) outcome with payoff o. Present episode (target in shortlist): accept a positive candidate or
+    reserve -- maximise sum_{pos} p + p_null/o. Absent / target-outside-shortlist episode (P[:,M]=1): the only correct
+    outcome is no-match -- maximise p_null. Disclosed adaptation: reservation here means 'no gallery match', not 'decline
+    to predict'."""
+    Z = torch.logsumexp(lg, 1); pres = P[:, M] == 0                 # present & target in shortlist
+    pos = lg[:, :M].masked_fill(P[:, :M] == 0, -1e4)                # positive-candidate logits only
+    num_pres = torch.logsumexp(torch.cat([pos, (lg[:, M] - math.log(o))[:, None]], 1), 1)
+    num = torch.where(pres, num_pres, lg[:, M])
+    return -(num - Z).mean()
+
+
+def train(Dtr, kind, seed, steps, trk, bs=192):
+    torch.manual_seed(seed); g = np.random.default_rng(seed); qs = np.flatnonzero(Dtr.ok)
+    net = Net(Dtr.Fq.shape[1], kind).to(dev); opt = torch.optim.AdamW(net.parameters(), 3e-4, weight_decay=1e-2)
+    sched = torch.optim.lr_scheduler.OneCycleLR(opt, 3e-4, total_steps=steps)
+    for it in range(steps):
+        eps = []
+        while len(eps) < bs:
+            i = g.choice(qs); E = int(g.random() < 0.5); K = int(g.choice(trk)); its, tm = Dtr.sample(i, E, K, g)
+            if len(its) < 2 or (E and not tm.any()):
+                continue
+            s = Dtr.Fg[its] @ Dtr.Fq[i]; o = np.argsort(-s); eps.append((i, its[o], tm[o], s[o], E, K))
+        X, C, A, pad, P = batch(Dtr, eps, net.cal); loss = loss_fn(net(X, C, A, pad), P, pad, kind == "pair_bce")
+        opt.zero_grad(); loss.backward(); opt.step(); sched.step()
+        if it % 500 == 0:
+            print(f"  {kind} s{seed} step {it} loss {loss.item():.4f}", flush=True)
+    return net.eval()
+
+
+def ap_r1(rank_tm):
+    hits = np.flatnonzero(rank_tm)
+    if not len(hits):
+        return 0.0, 0.0
+    return float(np.mean((np.arange(len(hits)) + 1) / (hits + 1))), float(rank_tm[0])
+
+
+@torch.no_grad()
+def run_model(net, D, eps):
+    conf, corr, ap, r1 = [], [], [], []
+    for b in range(0, len(eps), 256):
+        ch = eps[b:b + 256]; X, C, A, pad, _ = batch(D, ch, net.cal); lg = net(X, C, A, pad)
+        p = (torch.sigmoid(lg[:, :M]) if net.kind == "pair_bce" else torch.softmax(lg, 1)[:, :M]).cpu().numpy()
+        for k, (i, it, tm, s, E, K, *ng) in enumerate(ch):
+            n = min(M, len(it)); pk = p[k, :n]; j = int(pk.argmax()); conf.append(float(pk[j])); corr.append(float(E and tm[j]))
+            if E:
+                order = np.r_[np.argsort(-pk), np.arange(n, len(it))]; a, r = ap_r1(tm[order]); a *= recall(tm, ng)
+            else:
+                a, r = np.nan, np.nan
+            ap.append(a); r1.append(r)
+    return np.array(conf), np.array(corr), np.array(ap), np.array(r1)
+
+
+def recall(tm, ng):                                                # fraction of gallery targets that are candidates at all
+    return float(tm.sum()) / ng[0] if ng and ng[0] else 1.0
+
+
+def set_stats(s):
+    mu, sd = s.mean(), s.std() + 1e-6
+    return [s[0], s[1], s[0] - s[1], mu, sd, np.median(s), (s[0] - mu) / sd, skew(s), kurtosis(s), s[:5].mean(), np.log(len(s))]
+
+
+def wscore(s, n=10):
+    t = s[1:1 + n]
+    if len(t) < 3:
+        return 0.5
+    lo = t.min() - 1e-3; x = t - lo
+    try:
+        c, _, sc = weibull_min.fit(x, floc=0); return float(weibull_min.cdf(s[0] - lo, c, 0, sc))
+    except Exception:
+        return 0.5
+
+
+def qnull(s):
+    m = max(5, len(s) // 50); t = s[m:] if len(s) > m + 5 else s[1:]
+    z = (s[0] - t.mean()) / (t.std() + 1e-6); lf = len(s) * norm.logcdf(z)
+    return float(-np.log10(max(-np.expm1(lf), 1e-300)))
+
+
+def main():
+    ap = argparse.ArgumentParser(); ap.add_argument("--data", required=True); ap.add_argument("--enc", required=True)
+    ap.add_argument("--variants", default="base"); ap.add_argument("--steps", type=int, default=2000); ap.add_argument("--seeds", type=int, default=2)
+    ap.add_argument("--ntrain_eval", type=int, default=1200); ap.add_argument("--trk", default=""); ap.add_argument("--tag", default="")
+    ap.add_argument("--ntrain_ids", type=int, default=0)
+    ap.add_argument("--qpp", type=int, default=1, help="11-04 fix: query boxes per training person, as in sm_v6 (meta must use the same train-eval episodes)")
+    a = ap.parse_args(); trk = tuple(int(k) for k in a.trk.split(",")) if a.trk else TRK[a.data]
+    load = (lambda enc, sp: market(enc, sp, a.data)) if a.data in ("market", "rpif", "msmt") else (lambda enc, sp: scene(enc, sp, a.data, a.qpp))
+    Dtr, Dte = load(a.enc, "train"), load(a.enc, "test")
+    if a.ntrain_ids:
+        Dtr = restrict_ids(Dtr, a.ntrain_ids)
+    od = os.path.join(O, "v5"); os.makedirs(od, exist_ok=True)
+    ev_te = episodes(Dte, TEK.get(a.data, getattr(Dte, "Gs", None)), None, 2)
+    print(a.data, a.enc, "train q", int(Dtr.ok.sum()), "test episodes", len(ev_te), flush=True)
+    for v in a.variants.split(","):
+        out = os.path.join(od, f"{a.data}_{a.enc}_{v}{a.tag}.npz")
+        if v == "base":                                             # cosine-based rules + SDSE / p_null fitted on train episodes
+            ev_tr = episodes(Dtr, TRK[a.data], a.ntrain_eval, 1)
+            lab = lambda ev: np.array([float(E and tm[0]) for i, it, tm, s, E, K, *_ in ev])
+            Vtr, Vte = lab(ev_tr), lab(ev_te)
+            Xtr = np.nan_to_num(np.array([set_stats(e[3]) for e in ev_tr])); Xte = np.nan_to_num(np.array([set_stats(e[3]) for e in ev_te]))
+            mu, sd = Xtr.mean(0), Xtr.std(0) + 1e-6; w = np.zeros(Xtr.shape[1] + 1); Z = np.c_[(Xtr - mu) / sd, np.ones(len(Xtr))]
+            for _ in range(50):
+                q = 1 / (1 + np.exp(-Z @ w)); w -= np.linalg.solve((Z * (q * (1 - q))[:, None]).T @ Z + 1e-2 * np.eye(len(w)), Z.T @ (q - Vtr) + 1e-2 * w)
+            F0 = np.sort(np.concatenate([e[3][~e[2]][:200] for e in ev_tr]))
+            pn = lambda s: -np.log10(np.clip(1 - np.clip(np.searchsorted(F0, s[0], side="right") / len(F0), 1e-6, 1 - 1e-9) ** len(s), 1e-12, 1))
+            res = {}
+            for nm, ftr, fte in (("raw", [e[3][0] for e in ev_tr], [e[3][0] for e in ev_te]),
+                                 ("margin", [e[3][0] - e[3][1] for e in ev_tr], [e[3][0] - e[3][1] for e in ev_te]),
+                                 ("sdse", Z @ w, np.c_[(Xte - mu) / sd, np.ones(len(Xte))] @ w),
+                                 ("pnull", [pn(e[3]) for e in ev_tr], [pn(e[3]) for e in ev_te])):
+                res[nm + "_tr"] = np.asarray(ftr, float); res[nm + "_te"] = np.asarray(fte, float)
+            apr = [(ap_r1(e[2])[0] * recall(e[2], e[6:]), ap_r1(e[2])[1]) if e[4] else (np.nan, np.nan) for e in ev_te]
+            np.savez(os.path.join(od, f"{a.data}_{a.enc}_meta{a.tag if (a.ntrain_ids or a.qpp != 1) else ''}.npz"), E=np.array([e[4] for e in ev_te]), K=np.array([e[5] for e in ev_te]),
+                     Etr=np.array([e[4] for e in ev_tr]), Vtr=Vtr, Vte=Vte, cos_ap=np.array([x[0] for x in apr]), cos_r1=np.array([x[1] for x in apr]), **res)
+            print("base saved", flush=True); continue
+        if v == "evt":
+            ev_tr = episodes(Dtr, trk, a.ntrain_eval, 1); res = {}
+            for nm, f in (("wscore", wscore), ("qnull", qnull)):
+                res[nm + "_tr"] = np.array([f(e[3]) for e in ev_tr]); res[nm + "_te"] = np.array([f(e[3]) for e in ev_te])
+            np.savez(out + ".tmp.npz", **res); os.replace(out + ".tmp.npz", out); print("saved evt", flush=True); continue
+        ev_tr = episodes(Dtr, trk, a.ntrain_eval, 1); r = {}
+        neg = np.concatenate([e[3][~e[2]] for e in ev_tr])               # impostor-score CDF for the _cal inputs (train only)
+        Dtr.F0 = Dte.F0 = np.sort(np.random.default_rng(0).choice(neg, min(len(neg), 200000), replace=False))
+        for sd_ in range(a.seeds):
+            net = train(Dtr, v, sd_, a.steps, trk)
+            for nm, D, ev in (("tr", Dtr, ev_tr), ("te", Dte, ev_te)):
+                c, k, apv, r1 = run_model(net, D, ev); r[f"conf_{nm}_s{sd_}"] = c; r[f"corr_{nm}_s{sd_}"] = k
+                if nm == "te":
+                    r[f"ap_s{sd_}"] = apv; r[f"r1_s{sd_}"] = r1
+        np.savez(out + ".tmp.npz", **r); os.replace(out + ".tmp.npz", out); print("saved", v, flush=True)
+
+
+if __name__ == "__main__":
+    main()

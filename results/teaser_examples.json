@@ -1,0 +1,28 @@
+[
+ {
+  "q": 842,
+  "true_score": 0.7655055522918701,
+  "true_rank_large": 2,
+  "true_score_large": 0.7655055522918701,
+  "top_distractors_large": [
+   0.8057610392570496,
+   0.7655055522918701,
+   0.7642879486083984
+  ],
+  "sm_correct_accept_share": 1.0,
+  "cos_thr": 0.7627649813890457
+ },
+ {
+  "q": 1545,
+  "true_score": 0.8108791708946228,
+  "true_rank_large": 2,
+  "true_score_large": 0.8108791708946228,
+  "top_distractors_large": [
+   0.8479350805282593,
+   0.8108791708946228,
+   0.8019765019416809
+  ],
+  "sm_correct_accept_share": 0.9,
+  "cos_thr": 0.7627649813890457
+ }
+]

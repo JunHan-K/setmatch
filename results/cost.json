@@ -1,0 +1,55 @@
+{
+ "ctx_bs1": {
+  "ms_per_query": 0.8735734224319458,
+  "peak_MB": 704.15087890625,
+  "params": 643713
+ },
+ "ctx_bs256": {
+  "ms_per_query": 0.013565873277598414,
+  "peak_MB": 1027.88671875,
+  "params": 643713
+ },
+ "attn_bs1": {
+  "ms_per_query": 1.4541614055633545,
+  "peak_MB": 798.92333984375,
+  "params": 842625
+ },
+ "attn_bs256": {
+  "ms_per_query": 0.024357787494001717,
+  "peak_MB": 1029.404296875,
+  "params": 842625
+ },
+ "attn_eff_bs1": {
+  "ms_per_query": 1.732204556465149,
+  "peak_MB": 798.93896484375,
+  "params": 842625
+ },
+ "attn_eff_bs256": {
+  "ms_per_query": 0.015397332180505513,
+  "peak_MB": 1033.3955078125,
+  "params": 842625
+ },
+ "attn_dual_bs1": {
+  "ms_per_query": 1.5462452173233032,
+  "peak_MB": 798.93115234375,
+  "params": 843649
+ },
+ "attn_dual_bs256": {
+  "ms_per_query": 0.013996321579505658,
+  "peak_MB": 1029.419921875,
+  "params": 843649
+ },
+ "attn_qn_bs1": {
+  "ms_per_query": 2.03491747379303,
+  "peak_MB": 800.0859375,
+  "params": 909316
+ },
+ "attn_qn_bs256": {
+  "ms_per_query": 0.01562524115902254,
+  "peak_MB": 1033.97607421875,
+  "params": 909316
+ },
+ "cosine_top1_bsall": {
+  "ms_per_query": 2.94912820574881e-06
+ }
+}
