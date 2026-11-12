@@ -1,7 +1,7 @@
 """11-05 IDB (reviewer: resampling unit). Identity-cluster bootstrap of the main comparison: per setting, the frozen-
-threshold strict accuracy difference SetMatch - GS (and SetMatch - SCH when its predictions exist). Each of 1000
+threshold strict accuracy difference SetWiseMatch - GS (and SetWiseMatch - SCH when its predictions exist). Each of 1000
 replicates draws test identities with replacement (all queries of an identity and all gallery sizes of a query move
-together) and SetMatch seeds with replacement; thresholds stay fixed from training (no test information). Reports the
+together) and SetWiseMatch seeds with replacement; thresholds stay fixed from training (no test information). Reports the
 paired effect, its 95% interval and the share of settings whose interval excludes 0. Writes results/setmatch/idb.json."""
 import json
 import os

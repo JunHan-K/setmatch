@@ -1,4 +1,4 @@
-"""11-02 SetMatch v5 evaluation: merges results/setmatch/v5/<data>_<enc>_{meta,<variant>}.npz.
+"""11-02 SetWiseMatch v5 evaluation: merges results/setmatch/v5/<data>_<enc>_{meta,<variant>}.npz.
 Per method and cell K: open-world AUROC (confidence vs correctness of the method's own choice, E = 0 and 1 mixed),
 frozen-threshold regret for pi in {.2, .5, .8} (threshold chosen on train episodes at pi = .5), closed-set mAP / R1 on
 E = 1 episodes. Learned variants: metrics per seed, then averaged. Writes results/setmatch/v5_eval.json."""

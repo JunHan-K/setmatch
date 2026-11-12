@@ -1,6 +1,6 @@
 """11-05 HARD (PREREG 'HARD'; saved predictions only): the Figure 1 situation. Present test episodes whose cosine top-1
 is wrong although the target is in the top-64 shortlist; success = accepted and correct at each rule's frozen threshold
-(CTRL rule), mean over test sizes and at the largest size. SetMatch vs SCH vs set pooling. Writes results/setmatch/hard.json."""
+(CTRL rule), mean over test sizes and at the largest size. SetWiseMatch vs SCH vs set pooling. Writes results/setmatch/hard.json."""
 import json
 import os
 import sys

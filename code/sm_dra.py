@@ -1,4 +1,4 @@
-"""11-05 DRA (PREREG 'DRA', follow-up): on the same SetMatch models and seeds (attn_s10dra, p(no-match) saved), the
+"""11-05 DRA (PREREG 'DRA', follow-up): on the same SetWiseMatch models and seeds (attn_s10dra, p(no-match) saved), the
 accept score p_max vs the candidate/no-match margin log p_max - log p0, each with its own CTRL threshold (strict accuracy
 on training episodes). Strict accuracy, DIR at 1/5/10% FAR, selective worst regret; and margin rule vs SCH accuracy.
 Reuses sm_gv.py (rule). Writes results/setmatch/dra.json."""

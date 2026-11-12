@@ -2,7 +2,7 @@
 tertiles of candidate ambiguity, measured by an independent model: the maximum candidate posterior of the separately
 trained selector (attn_sel_s5ds, mean over its seeds; no-match blocked). In each tertile, false identification rate
 FIR = P(accept and the chosen candidate is wrong | present) at the frozen thresholds of Tab. ctrl (sm_swap.mask_rule),
-for GS (cosine top-1) and SetMatch (its own choice, mean over seeds); also DIR = P(accept and correct | present).
+for GS (cosine top-1) and SetWiseMatch (its own choice, mean over seeds); also DIR = P(accept and correct | present).
 Writes results/setmatch/amb.json."""
 import json
 import os
@@ -25,7 +25,7 @@ for key in CELLS:
                     fir_sm=float(np.mean([(a[m] & ~(y[f"corr_te_s{s}"][m] > 0)).mean() for a, s in zip(ms, S)])),
                     dir_sm=float(np.mean([(a[m] & (y[f"corr_te_s{s}"][m] > 0)).mean() for a, s in zip(ms, S)])), n=int(m.sum()))
     res[key] = r; print(key.ljust(30), json.dumps({t: {f: round(v, 3) for f, v in x.items()} for t, x in r.items()}), flush=True)
-red = lambda k, t: res[k][t]["fir_gs"] - res[k][t]["fir_sm"]          # FIR reduction by SetMatch in tertile t
+red = lambda k, t: res[k][t]["fir_gs"] - res[k][t]["fir_sm"]          # FIR reduction by SetWiseMatch in tertile t
 did = [red(k, 0) - red(k, 2) for k in CELLS]
 V = dict(med_fir={t: {m: float(np.median([res[k][t][f"fir_{m}"] for k in CELLS])) for m in ("gs", "sm")} for t in range(3)},
          med_dir={t: {m: float(np.median([res[k][t][f"dir_{m}"] for k in CELLS])) for m in ("gs", "sm")} for t in range(3)},

@@ -1,8 +1,8 @@
 """11-04 verdicts of PREREG 'GV' and 'XM' (saved predictions only).
-  gv : SetMatch + set statistics (attn_gsc_s10gv) confirmed once on MSMT17 (CLIP, DINOv2), against GS and SetMatch (attn_s20).
-  xm : rules trained on MSMT17 and applied unchanged to Market-1501, CUHK-SYSU and PRW (CLIP, DINOv2): SetMatch
+  gv : SetWiseMatch + set statistics (attn_gsc_s10gv) confirmed once on MSMT17 (CLIP, DINOv2), against GS and SetWiseMatch (attn_s20).
+  xm : rules trained on MSMT17 and applied unchanged to Market-1501, CUHK-SYSU and PRW (CLIP, DINOv2): SetWiseMatch
        (attn_s10xm) vs GS and the cosine, both fitted on the same MSMT17 training episodes.
-A cell is degenerate when the cosine, GS and SetMatch frozen strict accuracies all lie within .500 +- .005 (every rule
+A cell is degenerate when the cosine, GS and SetWiseMatch frozen strict accuracies all lie within .500 +- .005 (every rule
 rejects everything); it is reported but not counted. Reuses sm_ctrl.py (evaluate) and sm_mf.py (dir_at).
 Writes results/setmatch/gv.json or xm.json."""
 import json

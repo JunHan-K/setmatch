@@ -1,4 +1,4 @@
-"""11-05 SCH verdict (PREREG 'SCH'): SetMatch (attn_s20) vs frozen selector + correctness head (selch_s10sch), 27 settings,
+"""11-05 SCH verdict (PREREG 'SCH'): SetWiseMatch (attn_s20) vs frozen selector + correctness head (selch_s10sch), 27 settings,
 metrics of sm_gv.rule. Writes results/setmatch/sch.json."""
 import json
 import os

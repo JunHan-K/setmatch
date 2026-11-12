@@ -1,5 +1,5 @@
 """11-05 CHO (PREREG 'CHO'; saved predictions only): does the joint candidate/no-match output improve the choice itself?
-Per setting, choice accuracy R1 = P(choice is the true match | present) averaged over test sizes, SetMatch (attn_s20)
+Per setting, choice accuracy R1 = P(choice is the true match | present) averaged over test sizes, SetWiseMatch (attn_s20)
 minus the SCH selector (selch_s10sch: same architecture, inputs, episodes and budget, no-match output removed), with an
 identity-cluster bootstrap (1000; seeds resampled); also within the training size range vs extrapolated sizes (22
 settings, as LOC). Writes results/setmatch/cho.json."""

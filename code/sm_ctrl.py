@@ -1,8 +1,8 @@
 """11-04 CTRL (PREREG 'CTRL'; saved predictions only, no training).
-J: is the joint candidate/no-match output needed?  Rules on identical frozen features and the same 10 SetMatch seeds:
-   cos (cosine accept, cosine top-1), gs (GS accept, cosine top-1), sm (SetMatch accept and choice), ctx (set pooling),
-   gs+sel (GS accept, SetMatch choice: the same learned selector with a statistics presence detector),
-   sm+cos (SetMatch accept, cosine top-1).
+J: is the joint candidate/no-match output needed?  Rules on identical frozen features and the same 10 SetWiseMatch seeds:
+   cos (cosine accept, cosine top-1), gs (GS accept, cosine top-1), sm (SetWiseMatch accept and choice), ctx (set pooling),
+   gs+sel (GS accept, SetWiseMatch choice: the same learned selector with a statistics presence detector),
+   sm+cos (SetWiseMatch accept, cosine top-1).
 U: utility under the strict gallery-level convention at pi = .5 -- a present query is handled correctly only if the
    true match is accepted; FAR = P(accept | absent), DIR = P(accept and correct | present); threshold fixed on the
    train-eval episodes by maximising the same strict accuracy; per test K: frozen accuracy, oracle accuracy, their gap.
@@ -97,16 +97,16 @@ if DROP:
 print("SUMMARY", json.dumps(summ, indent=0)); print("J", json.dumps(J)); print("U", json.dumps(U))
 json.dump(dict(cells=res, summary=summ, J=J, U=U, dropped=dropped), open(os.path.join(O, "ctrl_drop.json" if DROP else "ctrl.json"), "w"), indent=1)
 f3 = lambda x: ("%.3f" % x).replace("0.", ".", 1)
-names = {"cos": "Cosine threshold", "gs": "GS (cosine top-1)", "gs-mlp": "GS-MLP (cosine top-1)", "gs+sel": "GS accept + SetMatch choice", "sch": "Selector + correctness head", "sm+cos": "SetMatch accept + cosine top-1", "ctx": "Set pooling + $\\nul$", "sm": "\\textbf{SetMatch}"}
+names = {"cos": "Cosine threshold", "gs": "GS (cosine top-1)", "gs-mlp": "GS-MLP (cosine top-1)", "gs+sel": "GS accept + SetWiseMatch choice", "sch": "Selector + correctness head", "sm+cos": "SetWiseMatch accept + cosine top-1", "ctx": "Set pooling + $\\nul$", "sm": "\\textbf{SetWiseMatch}"}
 L = [f"{names[m]} & {f3(summ[m]['acc_mean'])} & {f3(summ[m]['acc_worst'])} & {f3(summ[m]['oracle_mean'])} & {f3(summ[m]['strict_regret'])} & {f3(summ[m]['dir_mean'])} & {f3(summ[m]['far_max'])} & {f3(summ[m]['R_K'])} & {f3(summ[m]['sel_worst'])}\\\\" for m in M]
 fd = os.path.join(O, "dra20.json")                                 # 11-05 DRA follow-up: margin accept rule on the same models (10 seeds)
 if os.path.exists(fd) and not DROP:
     dc = json.load(open(fd))["cells"]; dm = lambda f: float(np.median([dc[k]["margin"][f] for k in CELLS]))
-    L.append("SetMatch, margin rule (follow-up) & " + " & ".join(f3(dm(f)) for f in ("acc_mean", "acc_worst", "oracle_mean", "strict_regret", "dir_mean", "far_max", "R_K", "sel_worst")) + "\\\\")
+    L.append("SetWiseMatch, margin rule (follow-up) & " + " & ".join(f3(dm(f)) for f in ("acc_mean", "acc_worst", "oracle_mean", "strict_regret", "dir_mean", "far_max", "R_K", "sel_worst")) + "\\\\")
 open(os.path.join(R, "new_paper/tab_ctrl_drop.tex" if DROP else "new_paper/tab_ctrl.tex"), "w").write(
     "\\begin{table*}[t]\\centering\\small\\setlength{\\tabcolsep}{3.5pt}\n\\caption{Decision utility at $\\pi=0.5$ under the strict gallery-level convention (a present query counts as correct only if its true match is accepted), "
     "medians over the 27 settings. Frozen: threshold fixed on training episodes; oracle: best threshold per test size. DIR: accepted and correct among present queries; FAR: accepts among absent queries (worst test size). "
-    "$R_K$: cardinality-only regret ($\\pi=0.5$); selective: worst regret of Tab.~\\ref{tab:main}. GS-MLP: the same statistics with a two-layer MLP trained on SetMatch's pool. Selector + correctness head: a frozen selector of SetMatch's architecture without the no-match output and an MLP that predicts whether its choice is correct. The swap rows exchange the accept and the choice between GS and SetMatch on the same seeds."
+    "$R_K$: cardinality-only regret ($\\pi=0.5$); selective: worst regret of Tab.~\\ref{tab:main}. GS-MLP: the same statistics with a two-layer MLP trained on SetWiseMatch's pool. Selector + correctness head: a frozen selector of SetWiseMatch's architecture without the no-match output and an MLP that predicts whether its choice is correct. The swap rows exchange the accept and the choice between GS and SetWiseMatch on the same seeds."
     + (" Present queries whose target is outside the encoded top-64 are removed." if DROP else "") + "}\\label{tab:ctrl" + ("drop" if DROP else "") + "}\n"
     "\\begin{tabular}{lcccccccc}\\toprule\n & \\multicolumn{2}{c}{frozen accuracy$\\uparrow$} & oracle & & & & & \\\\\n method & mean $K$ & worst $K$ & accuracy & gap$\\downarrow$ & DIR$\\uparrow$ & FAR$\\downarrow$ & $R_K\\downarrow$ & selective$\\downarrow$\\\\\\midrule\n"
     + "\n".join(L) + "\n\\bottomrule\n\\end{tabular}\\end{table*}\n")

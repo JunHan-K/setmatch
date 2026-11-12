@@ -2,7 +2,7 @@
 training K the threshold maximising (a) strict accuracy at pi = .5 and (b) selective accuracy at pi = .5 is found on a
 401-point grid and regressed on the mean log N of that K; each test episode gets a + b log N. Strict: frozen accuracy
 (mean / worst K), DIR, worst-K FAR, gap to the per-K oracle. Selective: worst regret over K x pi in {.2,.5,.8}.
-Rules: cosine, GS (logit), SetMatch (logit, 10 seeds); SetMatch with its constant threshold from ctrl.json for reference.
+Rules: cosine, GS (logit), SetWiseMatch (logit, 10 seeds); SetWiseMatch with its constant threshold from ctrl.json for reference.
 Writes results/setmatch/sca.json."""
 import json
 import os
@@ -57,5 +57,5 @@ Sm["smconst_gt_gssize"] = sum(res[k]["sm_const"]["acc_mean"] > res[k]["gs"]["acc
 Sm["smsize_gt_gssize"] = sum(res[k]["sm"]["acc_mean"] > res[k]["gs"]["acc_mean"] for k in CELLS)
 Sm["sel_smconst_lt_cossize"] = sum(res[k]["sm_const"]["sel_worst"] < res[k]["cos"]["sel_worst"] for k in CELLS)
 Sm["sel_smconst_lt_gssize"] = sum(res[k]["sm_const"]["sel_worst"] < res[k]["gs"]["sel_worst"] for k in CELLS)
-Sm["verdict"] = "size-conditional thresholds do not replace SetMatch" if Sm["smconst_gt_cossize"] >= 19 else "size-conditional cosine competes with SetMatch"
+Sm["verdict"] = "size-conditional thresholds do not replace SetWiseMatch" if Sm["smconst_gt_cossize"] >= 19 else "size-conditional cosine competes with SetWiseMatch"
 print(json.dumps(Sm, indent=0)); json.dump(dict(cells=res, summary=Sm), open(os.path.join(O, "sca.json"), "w"), indent=1)

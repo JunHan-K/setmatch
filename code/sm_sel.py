@@ -1,8 +1,8 @@
 """11-04 SEL / GSF (PREREG '사용자 결정 + CPU 분석 사전등록'; no training).
-SEL: forced-choice candidate re-selection of SetMatch (S10, 10 seeds) vs the cosine top-1 that GS also returns, on
+SEL: forced-choice candidate re-selection of SetWiseMatch (S10, 10 seeds) vs the cosine top-1 that GS also returns, on
 target-present test episodes: Rescue / Harm / both correct / both wrong, split by whether the target is in the encoded
 top-64; net correction rate NCR = P(Rescue) - P(Harm) (target in top-64) with a query-level cluster bootstrap 95% CI;
-top-1 and mAP change. GSF: across the 27 cells, x = GS worst regret, y = GS - SetMatch worst regret (S10), Spearman rho
+top-1 and mAP change. GSF: across the 27 cells, x = GS worst regret, y = GS - SetWiseMatch worst regret (S10), Spearman rho
 with a one-sided permutation p; figure new_paper/figs/gs_gap.pdf. Writes results/setmatch/sel.json."""
 import json
 import os
@@ -49,7 +49,7 @@ import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 fig, ax = plt.subplots(figsize=(3.4, 2.6)); mk = {"cuhk": "o", "prw": "s", "cuhkdet": "^", "prwdet": "v", "market": "D", "cuhkseq": "*", "prwseq": "P"}
 for k, a, b in zip(CELLS, x, yv):
     e = k.split("_", 1)[1]; ax.scatter(a, b, marker=mk[k.split("_")[0]], s=22, c="#1f77b4" if e in ENC[:3] or e == "seqnet" else "#ff7f0e", edgecolors="k", linewidths=0.3)
-ax.axhline(0, c="gray", lw=0.6); ax.set_xlabel("GS worst regret"); ax.set_ylabel("GS $-$ SetMatch"); ax.set_title(f"Spearman $\\rho$ = {rho:.2f} (" + ("p < 0.001" if pval < 1e-3 else f"p = {pval:.3f}") + ")", fontsize=8)
+ax.axhline(0, c="gray", lw=0.6); ax.set_xlabel("GS worst regret"); ax.set_ylabel("GS $-$ SetWiseMatch"); ax.set_title(f"Spearman $\\rho$ = {rho:.2f} (" + ("p < 0.001" if pval < 1e-3 else f"p = {pval:.3f}") + ")", fontsize=8)
 from matplotlib.lines import Line2D
 h = [Line2D([], [], marker=v, ls="", c="w", markeredgecolor="k", label=n) for n, v in mk.items()] + [Line2D([], [], marker="o", ls="", c=cl, label=n) for n, cl in (("ReID/SeqNet", "#1f77b4"), ("general", "#ff7f0e"))]
 ax.legend(handles=h, fontsize=5, ncol=2, loc="upper left"); fig.tight_layout(); fig.savefig(os.path.join(R, "new_paper/figs/gs_gap.pdf")); fig.savefig(os.path.join(R, "new_paper/figs/gs_gap.png"), dpi=200)

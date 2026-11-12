@@ -1,5 +1,5 @@
-"""11-04 IDS verdict (PREREG): strict frozen accuracy of SetMatch and GS, and selective worst regret, as the number of
-training identities used as queries shrinks (N in {56, 150, 400} vs all). Full level = existing GS base and SetMatch
+"""11-04 IDS verdict (PREREG): strict frozen accuracy of SetWiseMatch and GS, and selective worst regret, as the number of
+training identities used as queries shrinks (N in {56, 150, 400} vs all). Full level = existing GS base and SetWiseMatch
 s10main seeds 0-4. Uses sm_ctrl.evaluate unchanged. Writes results/setmatch/ids.json and new_paper/figs/ids.pdf."""
 import json
 import os
@@ -32,5 +32,5 @@ for ax, d, t in zip(axs, ("market", "cuhk"), ("Market-1501", "CUHK-SYSU")):
     for e, mk in (("osnet_ain_x1_0_msmt17", "o"), ("solider_msmt", "s"), ("clip", "^")):
         v = res[f"{d}_{e}"]; ax.plot(xs + [full], [v[str(n)]["delta"] for n in NS], marker=mk, c=F.C["sm"], lw=1.1, ms=3, label={"osnet_ain_x1_0_msmt17": "OSNet", "solider_msmt": "SOLIDER", "clip": "CLIP"}[e])
     ax.axhline(0, c=F.INK2, lw=0.6); ax.axvline(56, c=F.MUTED, lw=0.5, ls=":"); ax.set_xscale("log"); ax.set_title(t, pad=2); ax.set_xlabel("training identities")
-axs[0].set_ylabel("accuracy: SetMatch $-$ GS"); axs[0].legend(loc="lower right", handletextpad=0.3); fig.tight_layout(w_pad=0.6)
+axs[0].set_ylabel("accuracy: SetWiseMatch $-$ GS"); axs[0].legend(loc="lower right", handletextpad=0.3); fig.tight_layout(w_pad=0.6)
 P = os.path.join(R, "new_paper/figs"); fig.savefig(os.path.join(P, "ids.pdf")); fig.savefig(os.path.join(P, "ids.png"), dpi=200)

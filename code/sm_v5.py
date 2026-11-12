@@ -1,4 +1,4 @@
-"""11-02 SetMatch v5: image / box-level candidates, open-world decision, Market-1501 and CUHK-SYSU (GT boxes).
+"""11-02 SetWiseMatch v5: image / box-level candidates, open-world decision, Market-1501 and CUHK-SYSU (GT boxes).
 Candidates are gallery IMAGES (Market) or person BOXES inside gallery images (CUHK-SYSU), so one identity can occur
 several times in a candidate set -- the situation in which candidate-candidate evidence can matter.
 Episodes
@@ -58,12 +58,17 @@ def market(enc, split, name="market"):                            # 11-04: name=
     D.ids = np.unique(D.gpid); D.items = {p: np.flatnonzero(D.gpid == p) for p in D.ids}
     D.ok = np.array([(D.gcam[D.items.get(p, np.zeros(0, int))] != c).any() for p, c in zip(D.qpid, D.qcam)])
 
-    def sample(i, E, K, rng):
+    def sample(i, E, K, rng):                                      # 11-12 LEAK FIX: candidate count N identical for E=0/1 (no set-size cue to presence)
         p = D.qpid[i]; pool = D.ids[D.ids != p]
-        sel = pool if K == 0 else rng.choice(pool, min(K - E, len(pool)), replace=False)
-        it = np.concatenate([D.items[s] for s in sel])
-        if E:
-            t = D.items[p]; t = t[D.gcam[t] != D.qcam[i]]; it = np.concatenate([it, t])
+        sel = pool if K == 0 else rng.choice(pool, min(K, len(pool)), replace=False)   # K distractor identities (was K - E)
+        di = np.concatenate([D.items[s] for s in sel])
+        if E:                                                      # swap the target in for an equal number of distractor images -> |candidates| unchanged
+            t = D.items[p]; t = t[D.gcam[t] != D.qcam[i]]
+            if len(t) and len(di) > len(t):
+                di = di[rng.choice(len(di), len(di) - len(t), replace=False)]
+            it = np.concatenate([di, t])
+        else:
+            it = di
         return it, (D.gpid[it] == p)
     D.sample = sample
     return D
@@ -92,11 +97,18 @@ def scene(enc, split, name="cuhk", qpp=1):
         for b in q:
             D.pimgs[b] = np.unique(img[(pid == pid[b]) & (img != img[b]) & src])
         D.Fq, D.qpid, D.qbox = f[q], pid[q], q; D.ok = np.ones(len(q), bool)
+        tr_boxset = np.concatenate([boxes_of[int(k)] for k in tr_imgs])   # 11-12 LEAK FIX: box pool for size-matched absent episodes
 
         def sample(i, E, G, rng):
             b = D.qbox[i]; t = D.pimgs[b]; t = t[np.isin(t, tr_imgs)]; others = tr_imgs[~np.isin(tr_imgs, np.r_[t, img[b]])]
-            ims = np.r_[t[:G], rng.choice(others, max(G - len(t), 1), replace=False)] if E else rng.choice(others, G, replace=False)
-            it = np.concatenate([boxes_of[int(k)] for k in ims]); return it, (pid[it] == pid[b])
+            ims = np.r_[t[:G], rng.choice(others, max(G - len(t), 1), replace=False)]   # present layout fixes N
+            pit = np.concatenate([boxes_of[int(k)] for k in ims])
+            if E:
+                it = pit
+            else:                                                        # 11-12 LEAK FIX: absent = non-target boxes matched to the present candidate count
+                opool = tr_boxset[pid[tr_boxset] != pid[b]]
+                it = rng.choice(opool, min(len(pit), len(opool)), replace=False)
+            return it, (pid[it] == pid[b])
         D.sample = sample
     else:
         D.test = {}; Gs = sorted(int(k[1:-2]) for k in z.files if k.startswith("G") and k.endswith("_q"))
@@ -104,11 +116,21 @@ def scene(enc, split, name="cuhk", qpp=1):
             D.test[G] = (z[f"G{G}_q"], z[f"G{G}_gal"], z[f"G{G}_has"])
         q = z[f"G{Gs[0]}_q"]; D.Fq, D.qpid, D.qbox = f[q], pid[q], q; D.ok = np.ones(len(q), bool); D.Gs = tuple(Gs)
         assert all((z[f"G{G}_q"] == q).all() for G in D.test), "TestG query order differs across gallery sizes"
+        galbox = np.flatnonzero(gal); gimg = img[galbox]; gbpid = pid[galbox]   # 11-12 LEAK FIX: pool for size-matched absent galleries
 
         def sample(i, E, G, rng):
             qs, galr, has = D.test[G]; r = i                      # query order is identical across TestG files
-            ims = galr[r] if E else galr[r][~has[r]]
-            it = np.concatenate([boxes_of[int(k)] for k in ims if int(k) in boxes_of]); return it, (pid[it] == D.qpid[i])
+            if E:
+                it = np.concatenate([boxes_of[int(k)] for k in galr[r] if int(k) in boxes_of])
+            else:                                                # 11-12 LEAK FIX: match N to the present gallery so set size cannot reveal presence
+                present = sum(len(boxes_of[int(k)]) for k in galr[r] if int(k) in boxes_of)
+                keptims = galr[r][~has[r]]
+                kept = np.concatenate([boxes_of[int(k)] for k in keptims if int(k) in boxes_of]) if len(keptims) else np.zeros(0, int)
+                need = present - len(kept); qp = D.qpid[i]
+                pool = galbox[(gbpid != qp) & ~np.isin(gimg, galr[r])]
+                add = rng.choice(pool, min(need, len(pool)), replace=False) if need > 0 and len(pool) else np.zeros(0, int)
+                it = np.concatenate([kept, add]).astype(np.int64)
+            return it, (pid[it] == D.qpid[i])
         D.sample = sample
         D.ngt = lambda i, G: int(D.test[G][2][i].sum())            # target images in the gallery (recall denominator)
     return D
@@ -332,6 +354,9 @@ def main():
                                  ("sdse", Z @ w, np.c_[(Xte - mu) / sd, np.ones(len(Xte))] @ w),
                                  ("pnull", [pn(e[3]) for e in ev_tr], [pn(e[3]) for e in ev_te])):
                 res[nm + "_tr"] = np.asarray(ftr, float); res[nm + "_te"] = np.asarray(fte, float)
+            tk = lambda ev: np.array([np.pad(np.asarray(e[3][:8], float), (0, max(0, 8 - len(e[3]))), constant_values=np.nan) for e in ev])
+            res["topk_tr"] = tk(ev_tr); res["topk_te"] = tk(ev_te)     # top-8 scores/episode -> LocalScore (s0+s_k) post-hoc for any k
+            res["stats_tr"] = Xtr; res["stats_te"] = Xte               # the 11 score-list stats, for faithful stat-based baselines (SDSE etc.)
             apr = [(ap_r1(e[2])[0] * recall(e[2], e[6:]), ap_r1(e[2])[1]) if e[4] else (np.nan, np.nan) for e in ev_te]
             np.savez(os.path.join(od, f"{a.data}_{a.enc}_meta{a.tag if (a.ntrain_ids or a.qpp != 1) else ''}.npz"), E=np.array([e[4] for e in ev_te]), K=np.array([e[5] for e in ev_te]),
                      Etr=np.array([e[4] for e in ev_tr]), Vtr=Vtr, Vte=Vte, cos_ap=np.array([x[0] for x in apr]), cos_r1=np.array([x[1] for x in apr]), **res)

@@ -1,5 +1,5 @@
 """11-05 Fig. 4 (after DRA20/EXT-M): DIR vs FAR at the largest test gallery for GS, the selector with a correctness head
-(SCH, 10 seeds) and SetMatch with the p_max and the margin accept score (same models, attn_s20dra, 20 seeds); four
+(SCH, 10 seeds) and SetWiseMatch with the p_max and the margin accept score (same models, attn_s20dra, 20 seeds); four
 settings. Threshold swept on the test absent queries (matched FAR). Writes new_paper/figs/dirfar.pdf/.png."""
 import os
 
@@ -21,8 +21,8 @@ def curve(runs, E, K):
 
 
 show = (("cuhk_osnet_ain_x1_0_msmt17", "CUHK-SYSU · OSNet"), ("prwdet_transreidssl_msmt", "PRW prop. · TReID-SSL"), ("cuhk_clip", "CUHK-SYSU · CLIP"), ("cuhkseq_seqnet", "CUHK-SYSU · SeqNet"))
-ST = dict(gs=("GS", F.C["gs"], "-", "s"), sch=("selector + corr. head", "#7a5195", "-", "^"), pmax=("SetMatch, $p_{\\max}$", F.C["sm"], "--", "o"),
-          margin=("SetMatch, margin", F.C["sm"], "-", "o"))
+ST = dict(gs=("GS", F.C["gs"], "-", "s"), sch=("selector + corr. head", "#7a5195", "-", "^"), pmax=("SetWiseMatch, $p_{\\max}$", F.C["sm"], "--", "o"),
+          margin=("SetWiseMatch, margin", F.C["sm"], "-", "o"))
 fig, axs = plt.subplots(1, 4, figsize=(F.TXT, 1.6))
 for ax, (k, t) in zip(axs, show):
     z = dict(np.load(os.path.join(V5, f"{k}_meta.npz"))); E, K = z["E"], z["K"]

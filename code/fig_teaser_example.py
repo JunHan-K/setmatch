@@ -1,7 +1,7 @@
 """11-04 Fig.1(a): illustrative silhouettes with the real scores of one CUHK-SYSU test query (OSNet, query 1545, found by
 find_teaser.py). Small gallery (50 images): the true match ranks first (0.811). Large gallery (4000 images): the same
 true match with the same score ranks second behind a distractor (0.848). Below each row: the decision of a fixed cosine
-threshold (0.763, 5% FAR on training galleries), a size-aware threshold (cannot change the top-1) and SetMatch (picks and
+threshold (0.763, 5% FAR on training galleries), a size-aware threshold (cannot change the top-1) and SetWiseMatch (picks and
 accepts the true match in 18/20 seeds). Writes new_paper/figs/teaser_example.pdf."""
 import os
 
@@ -21,9 +21,9 @@ def person(ax, x, y, h, col, lw=0.0, ec="none"):
 
 fig, ax = plt.subplots(figsize=(0.33 * F.TXT, 1.62)); ax.set_xlim(0, 10); ax.set_ylim(0, 7.2); ax.axis("off")
 rows = ((4.55, "50 images", [(0.811, True), (0.675, False), (0.645, False), (0.602, False)], 0, 0,
-         (("fixed $\\tau$", "$\\checkmark$"), ("$\\tau(N)$", "$\\checkmark$"), ("SetMatch", "$\\checkmark$"))),
+         (("fixed $\\tau$", "$\\checkmark$"), ("$\\tau(N)$", "$\\checkmark$"), ("SetWiseMatch", "$\\checkmark$"))),
         (1.25, "4000 images", [(0.848, False), (0.811, True), (0.802, False), (0.777, False)], 0, 1,
-         (("fixed $\\tau$", "$\\times$ distractor"), ("$\\tau(N)$", "$\\times$ top-1"), ("SetMatch", "$\\checkmark$ true"))))
+         (("fixed $\\tau$", "$\\times$ distractor"), ("$\\tau(N)$", "$\\times$ top-1"), ("SetWiseMatch", "$\\checkmark$ true"))))
 person(ax, 0.75, 3.1, 1.6, QRY); ax.text(0.75, 2.6, "query", ha="center", fontsize=6.5, color=F.INK2)
 ax.plot([1.55, 1.55], [0.6, 6.9], c=F.GRID, lw=0.8); ax.plot([6.55, 6.55], [0.6, 6.9], c=F.GRID, lw=0.8)
 for y, lab, cands, cos_pick, sm_pick, dec in rows:
@@ -34,7 +34,7 @@ for y, lab, cands, cos_pick, sm_pick, dec in rows:
     xc = 2.4 + cos_pick * 1.15; ax.add_patch(Rectangle((xc - 0.42, y - 0.62), 0.84, 1.95, fill=False, ec=F.C["cos"], lw=0.8, ls="--", zorder=4))
     xs = 2.4 + sm_pick * 1.15; ax.add_patch(Rectangle((xs - 0.49, y - 0.69), 0.98, 2.09, fill=False, ec=F.C["sm"], lw=1.2, zorder=4))
     for i, (n, o) in enumerate(dec):
-        c = F.C["sm"] if n == "SetMatch" else F.INK2; yy = y + 1.2 - 0.55 * i
+        c = F.C["sm"] if n == "SetWiseMatch" else F.INK2; yy = y + 1.2 - 0.55 * i
         ax.text(6.75, yy, n, fontsize=5.8, color=c, va="center"); ax.text(9.95, yy, o, fontsize=5.8, color=c, ha="right", va="center")
 ax.text(5.5, 0.05, "illustrative silhouettes; real scores of one CUHK-SYSU query", ha="center", fontsize=5.2, color=F.MUTED, style="italic")
 fig.tight_layout(pad=0.1); P = os.path.join(R, "new_paper/figs"); fig.savefig(os.path.join(P, "teaser_example.pdf")); fig.savefig(os.path.join(P, "teaser_example.png"), dpi=250)

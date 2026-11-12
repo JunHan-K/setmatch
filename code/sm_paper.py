@@ -1,6 +1,6 @@
 """11-04 paper tables / figures from the final runs (mean over seeds of the per-seed worst; AUROC and mAP averaged over
 test K, then seeds). Methods: cosine, GS (SDSE-inspired gallery statistics), k-reciprocal re-ranking, pairwise BCE,
-pairwise + NULL, set pooling + NULL (ctx), SetMatch (attn). SetMatch and ctx: 10 seeds (_s10main); pairwise: the 5-seed
+pairwise + NULL, set pooling + NULL (ctx), SetWiseMatch (attn). SetWiseMatch and ctx: 10 seeds (_s10main); pairwise: the 5-seed
 ladder runs (_cmpraw, SeqNet _s5). Writes results/setmatch/paper.json, new_paper/tab_main.tex, new_paper/tab_full.tex,
 new_paper/tab_sel.tex, new_paper/figs/agnostic.pdf."""
 import json
@@ -87,7 +87,7 @@ rows = [("Cosine threshold", "\\checkmark", "threshold", "--", "cos"), ("Cosine,
         ("GS (SDSE-inspired)", "top-1 only", "\\checkmark", "statistics", "gs"), ("GS, size-aware threshold", "top-1 only", "\\checkmark", "statistics", "gs_sz"), ("GS-MLP", "top-1 only", "\\checkmark", "statistics", "gs_mlp"),
         ("Pairwise (BCE)", "\\checkmark", "threshold", "--", "pair_bce"),
         ("Pairwise + $\\nul$", "\\checkmark", "\\checkmark", "--", "pair_null"), ("Selector + correctness head", "\\checkmark", "head", "attention", "sch"), ("Set pooling + $\\nul$", "\\checkmark", "\\checkmark", "pooling", "ctx"),
-        ("\\textbf{SetMatch}", "\\checkmark", "\\checkmark", "attention", "setmatch")]
+        ("\\textbf{SetWiseMatch}", "\\checkmark", "\\checkmark", "attention", "setmatch")]
 L = []
 for name, cc, rj, sr, m in rows:
     s = S[m]; hc = "--" if m == "cos" else f"{s['half_cos']}/27"; L.append(f"{name} & {cc} & {rj} & {sr} & {f3(s['regret'])} & {hc} & {f3(s['auroc'])} & {f3(s['mAP'])}\\\\")
@@ -95,7 +95,7 @@ for name, cc, rj, sr, m in rows:
         c = S["cohort"]; L.append(f"Cohort Z/T/S-norm$^\\ddagger$ & \\checkmark & threshold & cohort & {f3(c['regret'])} (cos {f3(c['cos_same'])}) & {c['half_cos']}/{c['n']} & -- & =cos\\\\")
 tab = ("\\begin{table*}[t]\\centering\\small\\setlength{\\tabcolsep}{4pt}\n\\caption{Decision layers on identical frozen features, 27 dataset--encoder cells "
        "(5 encoders $\\times$ CUHK-SYSU, CUHK proposals, PRW, PRW proposals, Market-1501, plus SeqNet on CUHK-SYSU and PRW). Medians over cells; worst set-expansion "
-       "regret (selective convention, Sec.~\\ref{sec:shift}) is the mean over seeds of each seed's worst case over test sizes and priors (SetMatch and set pooling: "+NSEED+" seeds; pairwise: 5). "
+       "regret (selective convention, Sec.~\\ref{sec:shift}) is the mean over seeds of each seed's worst case over test sizes and priors (SetWiseMatch and set pooling: "+NSEED+" seeds; pairwise: 5). "
        "``$\\le\\frac12$ cos'': cells where the worst regret is at most half of the cosine's. AUROC ranks correct choices against all other episodes (open-world), mAP is closed-set on present queries. GS-MLP and the selector with a correctness head are the strongest baselines of Sec.~\\ref{sec:ctrl}. "
        "Size-aware: the accuracy-optimal threshold of each training gallery size regressed on $\\log N$ (two parameters). $^\\ddagger$Best of Z/T/S-norm per cell on the in-domain cells of the cohort study (CUHK-SYSU, PRW and SeqNet, "+str(S['cohort']['n'])+" cells) (2000 unlabelled training boxes as cohort); its own cosine median in brackets.}\\label{tab:main}\n"
        "\\begin{tabular}{lccccccc}\\toprule\n & candidate & explicit & set & worst & & & \\\\\n method & choice & reject & reasoning & regret$\\downarrow$ & $\\le\\frac12$ cos & AUROC$\\uparrow$ & mAP$\\uparrow$\\\\\\midrule\n"
@@ -113,8 +113,8 @@ for d, dn in DS + (("seq", "SeqNet"),):
     L.append("\\midrule")
 L[-1] = "\\bottomrule"
 open(os.path.join(P, "tab_full.tex"), "w").write("\\begin{table*}[t]\\centering\\small\\setlength{\\tabcolsep}{3pt}\n\\caption{Per-cell worst set-expansion regret (best in bold) / mAP. "
-    "SetMatch and set pooling: mean of "+NSEED+" seeds. CUHK-SYSU and proposals: training galleries $\\le500$, test up to 4000; PRW: training $\\le1000$, test 6111.}\\label{tab:full}\n"
-    "\\begin{tabular}{llccccc}\\toprule\n & & cosine & GS & re-rank & set pooling & SetMatch\\\\\\midrule\n" + "\n".join(L) + "\n\\end{tabular}\\end{table*}\n")
+    "SetWiseMatch and set pooling: mean of "+NSEED+" seeds. CUHK-SYSU and proposals: training galleries $\\le500$, test up to 4000; PRW: training $\\le1000$, test 6111.}\\label{tab:full}\n"
+    "\\begin{tabular}{llccccc}\\toprule\n & & cosine & GS & re-rank & set pooling & SetWiseMatch\\\\\\midrule\n" + "\n".join(L) + "\n\\end{tabular}\\end{table*}\n")
 # ---- re-selection table by encoder family
 fam = {"ReID (15)": [f"{d}_{e}" for d, _ in DS for e in ENC[:3]], "general (10)": [f"{d}_{e}" for d, _ in DS for e in ENC[3:]], "SeqNet (2)": ["cuhkseq_seqnet", "prwseq_seqnet"]}
 C = sel["cells"]; L = []
@@ -140,4 +140,4 @@ ax.set_xticks(range(6)); ax.set_xticklabels([EN[e] for e in ENC + ("seqnet",)]);
 from matplotlib.lines import Line2D
 ax.legend(handles=[Line2D([], [], marker=v, ls="", c="w", markeredgecolor="k", label=n) for n, v in (("CUHK-SYSU", "o"), ("CUHK prop.", "^"), ("PRW", "s"), ("PRW prop.", "v"), ("Market", "D"))],
           fontsize=6, ncol=5, loc="upper center", frameon=False)
-ax.set_title("open marker: cosine threshold, filled: SetMatch on the same frozen features", fontsize=7); fig.tight_layout(); fig.savefig(os.path.join(P, "figs/agnostic_single.pdf"))   # 11-05: was overwriting the two-panel Fig. (sm_figs.py)
+ax.set_title("open marker: cosine threshold, filled: SetWiseMatch on the same frozen features", fontsize=7); fig.tight_layout(); fig.savefig(os.path.join(P, "figs/agnostic_single.pdf"))   # 11-05: was overwriting the two-panel Fig. (sm_figs.py)

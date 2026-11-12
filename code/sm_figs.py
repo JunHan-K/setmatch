@@ -1,11 +1,11 @@
 """11-04 all paper figures in one style (figstyle.py), from saved results only:
   teaser_curves.pdf  Fig.1a  P(true match ranked first) vs gallery size, CUHK-SYSU | PRW, OSNet, cosine bins
-  teaser_acc.pdf     Fig.1c  frozen-threshold strict accuracy (median, IQR over 27 settings) of the threshold rules and SetMatch
-  agnostic.pdf       Fig.    (a) worst regret: cosine / size-aware cosine / SetMatch per setting, grouped by encoder;
-                             (b) strict-accuracy gain of SetMatch over the best threshold baseline per setting
-  gs_gap.pdf         Fig.    GS vs SetMatch worst regret, 27 settings, diagonal
+  teaser_acc.pdf     Fig.1c  frozen-threshold strict accuracy (median, IQR over 27 settings) of the threshold rules and SetWiseMatch
+  agnostic.pdf       Fig.    (a) worst regret: cosine / size-aware cosine / SetWiseMatch per setting, grouped by encoder;
+                             (b) strict-accuracy gain of SetWiseMatch over the best threshold baseline per setting
+  gs_gap.pdf         Fig.    GS vs SetWiseMatch worst regret, 27 settings, diagonal
   dirfar.pdf         Fig.    DIR vs FAR at the largest test gallery, four settings
-  riskpower.pdf      Supp.   cross-dataset risk-power, 10 seeds (SetMatch with shortlist-aware training)"""
+  riskpower.pdf      Supp.   cross-dataset risk-power, 10 seeds (SetWiseMatch with shortlist-aware training)"""
 import json
 import os
 
@@ -35,7 +35,7 @@ fig.tight_layout(w_pad=0.6); save(fig, "teaser_curves")
 # ---- Fig.1c (11-05: stability and accuracy side by side, C2)
 ng = J("ng.json")["cells"]
 rules = (("cos", "Cosine", lambda k: ctrl[k]["cos"]), ("cos_sz", "Cosine (size)", lambda k: sca[k]["cos"]), ("gs", "GS", lambda k: ctrl[k]["gs"]),
-         ("gs_sz", "GS (size)", lambda k: sca[k]["gs"]), ("gsmlp", "GS-MLP", lambda k: ng[k]["gsmlp"]), ("sm", "SetMatch", lambda k: ctrl[k]["sm"]))
+         ("gs_sz", "GS (size)", lambda k: sca[k]["gs"]), ("gsmlp", "GS-MLP", lambda k: ng[k]["gsmlp"]), ("sm", "SetWiseMatch", lambda k: ctrl[k]["sm"]))
 col = dict(F.C, gsmlp=F.C["gs"]); mk = dict(F.MK, gsmlp="s")
 fig, axs = plt.subplots(1, 2, figsize=(0.30 * F.TXT, 1.62), sharey=True)
 for ax, f, xl, fmt in ((axs[0], "sel_worst", "regret $\\downarrow$", "{:.3f}"), (axs[1], "acc_mean", "accuracy $\\uparrow$", "{:.3f}")):
@@ -62,7 +62,7 @@ for gi, (e, ks) in enumerate(groups):
         ax.scatter(x, c, marker=mk, s=13, c=F.C["sm"], edgecolors="white", linewidths=0.3, zorder=4)
 ax.set_xticks(range(len(groups))); ax.set_xticklabels([EN[e] for e, _ in groups]); ax.set_ylabel("worst set-expansion regret"); ax.set_ylim(bottom=0); ax.grid(axis="x", visible=False)
 ax.legend(handles=[Line2D([], [], marker="o", ls="", mfc="white", mec=F.C["cos"], label="cosine"), Line2D([], [], marker="x", ls="", c=F.C["cos_sz"], label="cosine, size-aware"),
-                   Line2D([], [], marker="o", ls="", c=F.C["sm"], label="SetMatch")], loc="lower left", bbox_to_anchor=(0.0, 1.0), ncol=3, borderaxespad=0.1, columnspacing=0.8, handletextpad=0.2)
+                   Line2D([], [], marker="o", ls="", c=F.C["sm"], label="SetWiseMatch")], loc="lower left", bbox_to_anchor=(0.0, 1.0), ncol=3, borderaxespad=0.1, columnspacing=0.8, handletextpad=0.2)
 F.panel(ax, "a", x=-0.09, y=1.10)
 ax = axs[1]
 for gi, (e, ks) in enumerate(groups):
@@ -79,8 +79,8 @@ for k, (g, dd) in pts.items():
     s = g - dd; hi = max(hi, g, s); fam = k.split("_", 1)[1]
     ax.scatter(g, s, marker=F.DSM[k.split("_")[0]], s=16, c=F.C["sm"] if fam in ENC[:3] or fam == "seqnet" else F.C["ctx"], edgecolors="white", linewidths=0.3, zorder=3)
 lim = hi * 1.06; ax.plot([0, lim], [0, lim], c=F.MUTED, lw=0.7, ls="--", zorder=1); ax.set_xlim(0, lim); ax.set_ylim(0, lim); ax.set_aspect("equal")
-ax.set_xlabel("GS worst regret"); ax.set_ylabel("SetMatch worst regret")
-ax.text(lim * 0.97, lim * 0.05, "SetMatch lower", ha="right", fontsize=6, color=F.INK2); ax.text(lim * 0.04, lim * 0.93, "GS lower", fontsize=6, color=F.INK2, va="top")
+ax.set_xlabel("GS worst regret"); ax.set_ylabel("SetWiseMatch worst regret")
+ax.text(lim * 0.97, lim * 0.05, "SetWiseMatch lower", ha="right", fontsize=6, color=F.INK2); ax.text(lim * 0.04, lim * 0.93, "GS lower", fontsize=6, color=F.INK2, va="top")
 ax.legend(handles=[Line2D([], [], marker="o", ls="", c=F.C["sm"], label="ReID / SeqNet"), Line2D([], [], marker="o", ls="", c=F.C["ctx"], label="general-purpose")]
           + [Line2D([], [], marker=v, ls="", mfc="white", mec=F.INK2, label=n) for n, v in (("CUHK-SYSU", "o"), ("CUHK prop.", "^"), ("PRW", "s"), ("PRW prop.", "v"), ("Market", "D"))],
           loc="center left", bbox_to_anchor=(1.0, 0.5), handletextpad=0.2, labelspacing=0.35)

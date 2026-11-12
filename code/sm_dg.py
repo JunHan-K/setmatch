@@ -1,4 +1,4 @@
-"""11-06 DG verdict (PREREG 'DECLAYER' (a)): Deep Gamblers reservation loss (attn_dg) vs SetMatch, 27 settings. The payoff
+"""11-06 DG verdict (PREREG 'DECLAYER' (a)): Deep Gamblers reservation loss (attn_dg) vs SetWiseMatch, 27 settings. The payoff
 o in {1.5,2,4} is chosen per cell by in-sample train-eval strict accuracy (test-free), and that o's test metrics are
 reported. Same CTRL rule (source-fixed threshold), strict accuracy and DIR at 1/5/10% FAR. Writes results/setmatch/dg.json."""
 import json
@@ -44,5 +44,5 @@ K_ = list(res); d = np.array([res[k]["sm_acc"] - res[k]["dg"]["acc_mean"] for k 
 V = dict(n=len(K_), med_d=float(np.median(d)), sm_better=int((d >= .005).sum()), dg_better=int((d <= -.005).sum()),
          med_acc_dg=float(np.median([res[k]["dg"]["acc_mean"] for k in K_])), med_acc_sm=float(np.median([res[k]["sm_acc"] for k in K_])),
          med_dir1_dg=float(np.median([res[k]["dg"]["dir0.01"] for k in K_])))
-V["verdict"] = "reservation loss below SetMatch" if V["med_d"] >= .003 and V["sm_better"] >= 15 else ("reservation loss matches" if V["med_d"] <= -.003 else "partial")
+V["verdict"] = "reservation loss below SetWiseMatch" if V["med_d"] >= .003 and V["sm_better"] >= 15 else ("reservation loss matches" if V["med_d"] <= -.003 else "partial")
 print("DG", json.dumps(V)); json.dump(dict(cells=res, verdict=V), open(os.path.join(O, "dg.json"), "w"), indent=1)

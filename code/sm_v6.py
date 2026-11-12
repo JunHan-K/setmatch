@@ -1,4 +1,4 @@
-"""11-02 SetMatch fast path (same models, data and episodes as sm_v5.py; outputs are read by sm_v5_eval.py).
+"""11-02 SetWiseMatch fast path (same models, data and episodes as sm_v5.py; outputs are read by sm_v5_eval.py).
 sm_v5.py rebuilt 192 episodes on the CPU at every training step and the whole test set for every variant, so the GPU
 waited on numpy. Here every episode set is built once per (data, encoder, training-K grid) and cached in compact form
 (top-M indices, scores, both context vectors, hit positions beyond M); model inputs are gathered on the GPU from the
@@ -196,7 +196,7 @@ def gs_fit(Z, y, lam=1e-2):
 
 
 def gsmlp(zpl, zs, qpid, seed, steps=3000):
-    """11-04 NG: nonlinear GS. MLP on the eleven GS statistics (log N included) of the SetMatch training pool, label =
+    """11-04 NG: nonlinear GS. MLP on the eleven GS statistics (log N included) of the SetWiseMatch training pool, label =
     cosine top-1 is a true match; width x weight decay chosen by BCE on pool episodes of 20% held-out training
     identities, then refitted on the whole pool. Returns the accept probability for each packed set in zs."""
     mu, sd = zpl["Cg"].mean(0), zpl["Cg"].std(0) + 1e-6; T = lambda a: torch.from_numpy(((a - mu) / sd).astype(np.float32)).to(V.dev)
@@ -394,7 +394,7 @@ def main():
                 r.update({f"conf_tr_s{sd}": ctr, f"corr_tr_s{sd}": fz[1][1], f"conf_te_s{sd}": cte, f"corr_te_s{sd}": fz[2][1], f"ap_s{sd}": fz[2][2], f"r1_s{sd}": fz[2][3]})
             r["Etr"] = ztr["E"]; out = os.path.join(od, f"{pre}_{v}{a.tag}.npz"); np.savez(out + ".tmp.npz", **r); os.replace(out + ".tmp.npz", out)
             print("saved", v, f"{time.time() - t1:.0f}s", flush=True); continue
-        if v == "gsmlp":                                           # NG: no SetMatch; accept = nonlinear GS, choice = cosine top-1
+        if v == "gsmlp":                                           # NG: no SetWiseMatch; accept = nonlinear GS, choice = cosine top-1
             for sd in range(a.seeds):
                 ctr, cte = gsmlp(zpl, (ztr, zte), Dtr.qpid[zpl["qi"]], sd)
                 r.update({f"conf_tr_s{sd}": ctr, f"corr_tr_s{sd}": ((ztr["E"] == 1) & ztr["tm"][:, 0]).astype(float), f"conf_te_s{sd}": cte,

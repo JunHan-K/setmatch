@@ -1,8 +1,13 @@
-# SetMatch
+# SetWiseMatch
 
 Code and result files for **"Same Score, Different Set: Candidate-Set Shift in Open-World Person Matching."**
+> **Note (provisional results).** The code reflects a fix to the evaluation's episode
+> construction (present/absent galleries are now size-matched so candidate-set size cannot
+> leak presence; see `code/sm_v5.py`). The `results/` JSONs and `figdata/` CSVs here are from
+> the pre-fix run and are being **regenerated**; treat the numbers as provisional until updated.
 
-SetMatch is a small, frozen-encoder-agnostic decision layer for open-world person matching
+
+SetWiseMatch is a small, frozen-encoder-agnostic decision layer for open-world person matching
 (person re-identification and person search). It turns a cosine shortlist into **one
 categorical distribution over `{no-match ∅, candidate 1 … L}`** and makes two decisions from it:
 
@@ -12,7 +17,7 @@ categorical distribution over `{no-match ∅, candidate 1 … L}`** and makes tw
 
 The problem it targets is **candidate-set shift**: the same query and the same score can mean a
 match in a small gallery and a non-match in a large one, so a fixed cosine threshold silently
-drifts as gallery size changes. SetMatch sees the whole shortlist (plus gallery-level score
+drifts as gallery size changes. SetWiseMatch sees the whole shortlist (plus gallery-level score
 statistics `g(C)` and an explicit no-match token) and stays stable across sizes.
 
 ## Method in one paragraph
@@ -54,7 +59,7 @@ Each result JSON is produced by one preregistered "verdict" script, e.g. `sm_ctr
 
 ## Headline numbers (27 dataset–encoder settings, medians)
 
-- Strict accuracy: SetMatch **.835** vs SCH .826, GS-MLP .822, Gallery-stats .818, size-aware
+- Strict accuracy: SetWiseMatch **.835** vs SCH .826, GS-MLP .822, Gallery-stats .818, size-aware
   cosine .792; better than Gallery-stats in 26/27 settings.
 - Worst-size selective regret: `.182 → .059`.
 - Margin acceptance: DIR @ 1% false-accept rate `.284 → .610` (same model, acceptance score only).

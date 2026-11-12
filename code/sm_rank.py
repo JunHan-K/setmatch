@@ -1,4 +1,4 @@
-"""11-05 RANK (PREREG 'RANK'; saved predictions only): SetMatch's advantage over SCH by the cosine rank of the best true
+"""11-05 RANK (PREREG 'RANK'; saved predictions only): SetWiseMatch's advantage over SCH by the cosine rank of the best true
 match among present episodes with the target in the shortlist (r = 1, 2, 3-5, 6-64); success = accepted and correct at
 each rule's frozen threshold, mean over test sizes. Also the share of r >= 2 per test size. Writes results/setmatch/rank.json."""
 import json

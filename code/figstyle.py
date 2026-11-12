@@ -15,7 +15,7 @@ INK, INK2, MUTED, GRID, SURF = "#0b0b0b", "#52514e", "#8c8b86", "#e6e5e1", "#fff
 C = dict(sm="#2a78d6", gs="#eb6834", ctx="#1baf7a", cos=INK2, cos_sz=INK2, gs_sz="#eb6834", neg="#e34948")
 LS = dict(sm="-", gs="-", ctx="-", cos="-", cos_sz="--", gs_sz="--")
 MK = dict(sm="o", gs="s", ctx="^", cos="D", cos_sz="x", gs_sz="+")
-NAME = dict(sm="SetMatch", gs="GS", ctx="Set pooling", cos="Cosine", cos_sz="Cosine, size-aware", gs_sz="GS, size-aware")
+NAME = dict(sm="SetWiseMatch", gs="GS", ctx="Set pooling", cos="Cosine", cos_sz="Cosine, size-aware", gs_sz="GS, size-aware")
 RAMP = ("#86b6ef", "#2a78d6", "#104281")   # ordinal blue ramp (steps 250, 450, 650)
 DSM = {"cuhk": "o", "cuhkdet": "^", "prw": "s", "prwdet": "v", "market": "D", "cuhkseq": "o", "prwseq": "s"}
 DSN = {"cuhk": "CUHK-SYSU", "cuhkdet": "CUHK prop.", "prw": "PRW", "prwdet": "PRW prop.", "market": "Market"}

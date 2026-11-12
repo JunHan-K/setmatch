@@ -1,6 +1,6 @@
 """11-05 SRC (PREREG 'SRC'; saved predictions only): source-fixed false-accept targets. Threshold = (1 - alpha) quantile of
 the training absent-episode scores, alpha in {1%, 5%}; per test size FAR and DIR, worst-size FAR, max deviation from the
-target, mean DIR. SetMatch p_max and margin (attn_s10dra, same models), SCH, GS-MLP, GS. Writes results/setmatch/src.json."""
+target, mean DIR. SetWiseMatch p_max and margin (attn_s10dra, same models), SCH, GS-MLP, GS. Writes results/setmatch/src.json."""
 import json
 import os
 import sys

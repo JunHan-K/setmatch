@@ -1,4 +1,4 @@
-"""11-04 MF + DF (PREREG): DIR at matched FAR under the strict convention. Rules: cosine, GS, SetMatch (S10, 10 seeds,
+"""11-04 MF + DF (PREREG): DIR at matched FAR under the strict convention. Rules: cosine, GS, SetWiseMatch (S10, 10 seeds,
 per-seed then averaged), set pooling (ctx_s10main). (a) target-oracle: per test K the threshold giving FAR = alpha on
 absent episodes; (b) source-fixed: threshold giving FAR = alpha on the train-eval absent episodes. alpha in {.05, .10}.
 DF: DIR-FAR curves at the largest test K for four settings -> new_paper/figs/dirfar.pdf. Writes results/setmatch/mf.json."""
@@ -49,7 +49,7 @@ S["verdict"] = "more true accepts at matched risk" if S["med_d_gs5"] >= .01 and 
 print(json.dumps(S)); json.dump(dict(cells=res, curves=curves, far_grid=FG.tolist(), summary=S), open(os.path.join(O, "mf.json"), "w"), indent=1)
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 show = (("cuhk_osnet_ain_x1_0_msmt17", "CUHK-SYSU, OSNet"), ("cuhk_clip", "CUHK-SYSU, CLIP"), ("prwdet_transreidssl_msmt", "PRW prop., TReID"), ("cuhkseq_seqnet", "CUHK-SYSU, SeqNet"))
-fig, axs = plt.subplots(1, 4, figsize=(7.0, 1.9), sharey=False); col = {"cos": "#718096", "gs": "#dd6b20", "sm": "#2b6cb0"}; lab = {"cos": "cosine", "gs": "GS", "sm": "SetMatch"}
+fig, axs = plt.subplots(1, 4, figsize=(7.0, 1.9), sharey=False); col = {"cos": "#718096", "gs": "#dd6b20", "sm": "#2b6cb0"}; lab = {"cos": "cosine", "gs": "GS", "sm": "SetWiseMatch"}
 for ax, (k, t) in zip(axs, show):
     for m in ("cos", "gs", "sm"):
         ax.plot(FG, curves[k][m], c=col[m], lw=1.2, label=lab[m])

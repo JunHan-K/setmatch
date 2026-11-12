@@ -1,11 +1,11 @@
 """11-05 LOC + RISK (PREREG 'LOC', 'RISK'; saved predictions only, one run).
 LOC  (reviewer: "is the extra gain over the strongest two-stage system specific to candidate-set shift?"): per setting,
      frozen-threshold strict accuracy (CTRL rule, pi = .5) averaged over the test sizes inside the training size range
-     (K <= largest training gallery) and over the extrapolated sizes (K > it), for SetMatch, SCH (frozen selector +
+     (K <= largest training gallery) and over the extrapolated sizes (K > it), for SetWiseMatch, SCH (frozen selector +
      correctness head), GS-MLP and set pooling. D_shift = (SM - SCH)_extrapolated - (SM - SCH)_in-range, with an
      identity-cluster bootstrap (1000; all queries of an identity and all sizes of a query move together, seeds resampled).
      Market-1501 is excluded (its training sizes include the full gallery: no extrapolated test size).
-RISK (reviewer: "is SetMatch's accuracy just a riskier operating point?"): for GS, GS-MLP, SCH, set pooling, SetMatch:
+RISK (reviewer: "is SetWiseMatch's accuracy just a riskier operating point?"): for GS, GS-MLP, SCH, set pooling, SetWiseMatch:
      DIR at matched test FAR 1/5/10% (per-size test quantile), present-query misidentification FIR = P(accept and wrong |
      present) and FAR at the frozen accuracy threshold, a source-fixed 5% FAR target (threshold from training absent
      episodes: worst-size test FAR, mean DIR), and the utility U = pi (DIR - c_mis FIR) - (1 - pi) c_fa FAR with its
@@ -71,7 +71,7 @@ if mode == "fm":                                                   # 11-05 FM: g
     V = {f: {m: med(f, m) for m in ("gs", "gs_mlp", "sch", "sm")} for f in ("acc", "dir0.01", "dir0.05", "dir0.1")}
     V.update(acc_gt_sch=sum(res[k]["acc"]["sm"] > res[k]["acc"]["sch"] for k in GK), acc_gt_gsmlp=sum(res[k]["acc"]["sm"] > res[k]["acc"]["gs_mlp"] for k in GK),
              dir5_gt_sch=sum(res[k]["dir0.05"]["sm"] > res[k]["dir0.05"]["sch"] for k in GK), dir10_gt_sch=sum(res[k]["dir0.1"]["sm"] > res[k]["dir0.1"]["sch"] for k in GK), n=len(GK))
-    V["verdict"] = "SetMatch strongest for general-purpose encoders" if V["acc_gt_sch"] >= 8 and V["dir5_gt_sch"] >= 7 else ("accuracy only" if V["acc_gt_sch"] >= 8 else "not shown")
+    V["verdict"] = "SetWiseMatch strongest for general-purpose encoders" if V["acc_gt_sch"] >= 8 and V["dir5_gt_sch"] >= 7 else ("accuracy only" if V["acc_gt_sch"] >= 8 else "not shown")
     print("FM", json.dumps(V)); json.dump(dict(cells=res, verdict=V), open(os.path.join(O, "fm.json"), "w"), indent=1); sys.exit()
 for key in CELLS:
     d = key.split("_")[0]; z = dict(np.load(os.path.join(V5, f"{key}_meta.npz"))); E, K = z["E"], z["K"]; R_ = runs(key, z)
@@ -133,7 +133,7 @@ else:
     V["sm_best_U"] = sum(max(M_, key=lambda m: V["medians"][m][f]) == "sm" for f in Uk); V["n_U"] = len(Uk)
     V["sm_vs_sch_U_cells"] = {f: sum(res[k]["sm"][f] > res[k]["sch"][f] for k in K_) for f in Uk}
     if mode == "search":
-        V["verdict"] = "SetMatch is the rule for large-archive search" if V["sm_best_U"] >= 6 else ("supplement" if V["sm_best_U"] <= 3 else "one sentence")
+        V["verdict"] = "SetWiseMatch is the rule for large-archive search" if V["sm_best_U"] >= 6 else ("supplement" if V["sm_best_U"] <= 3 else "one sentence")
     else:
         V["verdict"] = "benefit beyond pi=.5 accuracy" if V["sm_best_U"] >= 8 else ("limited to the accuracy-optimal point" if V["sm_best_U"] <= 4 else "mixed")
 print(mode.upper(), json.dumps(V)); json.dump(dict(cells=res, verdict=V), open(os.path.join(O, f"{mode}.json"), "w"), indent=1)
