@@ -41,7 +41,7 @@ def evaluate(xtr, ctr, Etr, xte, cte, E, K, ap, r1, space):
     out = dict(sel_worst=max(max(v["regret"].values()) for v in sel.values()), R_K=max(v["regret"][0.5] for v in sel.values()))
     if space == "prob":
         xtr, xte = lg(xtr), lg(xte)
-    grid = np.unique(np.quantile(np.r_[xtr, xte], np.linspace(0, 1, 401))); g1, g0 = strict_curves(xtr, ctr, Etr, grid); j = int(np.argmax(0.5 * g1 + 0.5 * g0))
+    grid = np.unique(np.quantile(xtr, np.linspace(0, 1, 401))); g1, g0 = strict_curves(xtr, ctr, Etr, grid); j = int(np.argmax(0.5 * g1 + 0.5 * g0))
     acc, orc, dir_, far = [], [], [], []
     for k in np.unique(K):
         m = K == k; h1, h0 = strict_curves(xte[m], cte[m], E[m], grid); a = 0.5 * h1 + 0.5 * h0

@@ -24,7 +24,7 @@ def fit(x, c, E, K, N, grid, which):
 
 
 def run(xtr, ctr, Etr, Ktr, Ntr, xte, cte, E, K, N):
-    grid = np.unique(np.quantile(np.r_[xtr, xte], np.linspace(0, 1, 401))); out = {}
+    grid = np.unique(np.quantile(xtr, np.linspace(0, 1, 401))); out = {}
     b1, b0 = fit(xtr, ctr, Etr, Ktr, Ntr, grid, "strict"); t = b0 + b1 * np.log(N); acc, orc, dr, far = [], [], [], []
     for k in np.unique(K):
         m = K == k; a = xte[m] > t[m]; e = E[m] == 1; ok = cte[m] > 0

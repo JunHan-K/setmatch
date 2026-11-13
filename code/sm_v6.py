@@ -286,7 +286,7 @@ def train(Gp, kind, seed, steps, bs=192, sub=None):
     for it in range(steps):
         sel = torch.randint(Gp.n, (bs,), generator=g).to(V.dev) if sub is None else sub[torch.randint(len(sub), (bs,), generator=g).to(V.dev)]
         X, C, A, pad, P = Gp.batch(sel, net.cal)
-        if net.selonly:
+        if getattr(net, "selonly", False):
             keep = P[:, :M].sum(1) > 0; lg_ = net(X, C, A, pad)[keep]; lg_[:, M] = -1e4
             loss = loss_fn(lg_, P[keep], pad[keep], False)
         elif kind.endswith("_dg"):

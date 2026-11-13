@@ -24,6 +24,9 @@ def auc(s, y):
 
 
 def acc(x, c, E, pi, t):
+    # SELECTIVE convention (NOT strict accuracy): a present query is credited when accept == correct,
+    # so rejecting a wrong choice also counts. Used only for the paper's selective-regret / R_K columns;
+    # strict accuracy is computed separately in sm_ctrl.strict_curves() with the (x > t) & (c > 0) rule.
     return pi * ((x[E == 1] > t) == (c[E == 1] > 0)).mean() + (1 - pi) * (x[E == 0] <= t).mean()
 
 
@@ -38,7 +41,7 @@ def metrics(xtr, ctr, Etr, xte, cte, E, K, ap, r1, space=None):
     """space: 'prob' (posterior) or 'logit' enables the v11 prior-corrected threshold logit(t_pi) = logit(t_0.5) - logit(pi)"""
     if space == "prob":
         lg = lambda x: np.log(np.clip(x, 1e-7, 1 - 1e-7)) - np.log1p(-np.clip(x, 1e-7, 1 - 1e-7)); xtr, xte = lg(np.asarray(xtr)), lg(np.asarray(xte))
-    grid = np.unique(np.quantile(np.r_[xtr, xte], np.linspace(0, 1, 401)))
+    grid = np.unique(np.quantile(xtr, np.linspace(0, 1, 401)))
     t1, t0 = acc_grid(xtr, ctr, Etr, grid); fz = grid[int(np.argmax(0.5 * t1 + 0.5 * t0))]; cells = {}
     for k in np.unique(K):
         m = K == k; x, c, e = xte[m], cte[m], E[m]
@@ -70,6 +73,8 @@ def main():
             Etr = y["Etr"] if "Etr" in y else z["Etr"]
             if len(y[f"conf_tr_s{seeds[0]}"]) != len(Etr):              # other training-K grid without stored labels
                 print("  skip", v, "(train-eval episodes differ from meta)"); continue
+            if f"ap_s{seeds[0]}" not in y:                              # non-eval variant (e.g. attn_dg saves only conf/corr)
+                print("  skip", v, "(no ap/r1 arrays)"); continue
             for s in seeds:
                 runs.append(metrics(y[f"conf_tr_s{s}"], y[f"corr_tr_s{s}"], Etr, y[f"conf_te_s{s}"], y[f"corr_te_s{s}"], E, K, y[f"ap_s{s}"], y[f"r1_s{s}"], space="prob"))
             per[v] = {k: {m: (float(np.nanmean([r[k][m] for r in runs])) if not m.startswith("regret") else {pi: float(np.mean([r[k][m][pi] for r in runs])) for pi in (0.2, 0.5, 0.8)})

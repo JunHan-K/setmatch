@@ -1,10 +1,11 @@
 # SetWiseMatch
 
 Code and result files for **"Same Score, Different Set: Candidate-Set Shift in Open-World Person Matching."**
-> **Note (provisional results).** The code reflects a fix to the evaluation's episode
-> construction (present/absent galleries are now size-matched so candidate-set size cannot
-> leak presence; see `code/sm_v5.py`). The `results/` JSONs and `figdata/` CSVs here are from
-> the pre-fix run and are being **regenerated**; treat the numbers as provisional until updated.
+> **Note (provisional results).** The code reflects fixes to the evaluation: present/absent
+> galleries are size-matched so candidate-set size cannot leak presence (see `code/sm_v5.py`),
+> and the frozen decision threshold is selected on *training* scores only. The
+> `results/setmatch/` JSONs here are from the pre-fix run and are being **regenerated**; treat
+> the numbers as provisional until updated.
 
 
 SetWiseMatch is a small, frozen-encoder-agnostic decision layer for open-world person matching
@@ -30,16 +31,16 @@ e_i = W_e [ q⊙c_i , |q−c_i| , c_i , s_i , r_i/64 , r_i/N ] + W_g g(C)
 ```
 
 together with a learned, set-pooled no-match token `z_∅ = null + pool(mean_i e_i, max_i e_i)`.
-Three set-attention blocks (LayerNorm, 4-head self-attention with a pairwise affinity bias
-`c_i^T c_j`, MLP, residuals) mix the tokens; a linear head + softmax give `P(y | q, C)`.
+Three set-attention blocks (LayerNorm, 4-head self-attention, MLP, residuals) mix the tokens;
+a linear head + softmax give `P(y | q, C)`. (An optional variant adds an explicit pairwise
+affinity bias `c_i^T c_j` to the attention logits; the headline model uses plain set-attention.)
 At `d=512` the layer is ~0.84M parameters (~1.1M at `d=1280`) and adds ~1.5 ms per query.
 
 ## Repository layout
 
 ```
-code/      Python scripts that compute the paper's numbers and draw its figures
-results/   small JSON result files the figures and tables are built from
-figdata/   CSV extracts used by a couple of figures
+code/              Python scripts that compute the paper's numbers and draw its figures
+results/setmatch/  small JSON result files the figures and tables are built from
 ```
 
 The large per-episode `.npz` prediction dumps and the datasets themselves are **not** included
@@ -49,9 +50,10 @@ per-cell values) each figure/table needs.
 ## Running the figure / table scripts
 
 Needs `numpy` and `matplotlib` (`code/figstyle.py` sets a shared plotting style). The scripts
-resolve a results directory via a variable near the top (e.g. `O = ...` / `R = ...`); point it at
-this repo's `results/` directory. A few figures/tables (the DIR–FAR curves and the per-cell
-main table) additionally need the per-episode `.npz` dumps, which are not redistributed here.
+resolve paths relative to the repo root (`R = code/../..`), so they read the bundled
+`results/setmatch/` JSONs out of the box. A few figures/tables (the DIR–FAR curves and the
+per-cell main table) additionally need the per-episode `.npz` prediction dumps, which are not
+redistributed here.
 
 Each result JSON is produced by one preregistered "verdict" script, e.g. `sm_ctrl.py → ctrl.json`,
 `sm_cho.py → cho.json`, `sm_hard.py → hard.json`, `sm_dra.py → dra.json`, `sm_src.py → src.json`,

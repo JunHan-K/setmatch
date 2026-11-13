@@ -12,7 +12,7 @@ for f in glob.glob("/usr/share/texmf/fonts/opentype/public/tex-gyre/texgyreterme
     font_manager.fontManager.addfont(f)
 COL, TXT = 3.25, 6.875                      # CVPR single / double column width (inch)
 INK, INK2, MUTED, GRID, SURF = "#0b0b0b", "#52514e", "#8c8b86", "#e6e5e1", "#ffffff"
-C = dict(sm="#2a78d6", gs="#eb6834", ctx="#1baf7a", cos=INK2, cos_sz=INK2, gs_sz="#eb6834", neg="#e34948")
+C = dict(sm="#1457e6", gs="#eb6834", ctx="#1baf7a", cos=INK2, cos_sz=INK2, gs_sz="#eb6834", neg="#e34948")
 LS = dict(sm="-", gs="-", ctx="-", cos="-", cos_sz="--", gs_sz="--")
 MK = dict(sm="o", gs="s", ctx="^", cos="D", cos_sz="x", gs_sz="+")
 NAME = dict(sm="SetWiseMatch", gs="GS", ctx="Set pooling", cos="Cosine", cos_sz="Cosine, size-aware", gs_sz="GS, size-aware")

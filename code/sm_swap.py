@@ -17,7 +17,7 @@ def mask_rule(xtr, ctr, Etr, xte, space):
     """accept mask on the test sets with the threshold fitted exactly as in evaluate (strict accuracy, own choice)"""
     if space == "prob":
         xtr, xte = lg(xtr), lg(xte)
-    grid = np.unique(np.quantile(np.r_[xtr, xte], np.linspace(0, 1, 401))); g1, g0 = strict_curves(xtr, ctr, Etr, grid)
+    grid = np.unique(np.quantile(xtr, np.linspace(0, 1, 401))); g1, g0 = strict_curves(xtr, ctr, Etr, grid)
     return xte > grid[int(np.argmax(0.5 * g1 + 0.5 * g0))]
 
 

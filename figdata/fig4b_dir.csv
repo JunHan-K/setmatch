@@ -1,5 +1,0 @@
-method,DIR_at_FAR_1pct,DIR_at_FAR_5pct
-GS-MLP,0.5526,0.6954
-SCH,0.5556,0.7161
-SetMatch p_max (no-match ablation),0.2844,0.6095
-SetMatch (margin),0.6103,0.7252

@@ -59,7 +59,7 @@ for gi, (e, ks) in enumerate(groups):
         ax.plot([x, x], [min(a, b, c), max(a, b, c)], c=F.GRID, lw=1.0, zorder=1)
         ax.scatter(x, a, marker=mk, s=12, facecolors="white", edgecolors=F.C["cos"], linewidths=0.7, zorder=3)
         ax.scatter(x, b, marker="x", s=10, c=F.C["cos_sz"], linewidths=0.7, zorder=3)
-        ax.scatter(x, c, marker=mk, s=13, c=F.C["sm"], edgecolors="white", linewidths=0.3, zorder=4)
+        ax.scatter(x, c, marker=mk, s=22, c=F.C["sm"], edgecolors="white", linewidths=0.5, zorder=5)
 ax.set_xticks(range(len(groups))); ax.set_xticklabels([EN[e] for e, _ in groups]); ax.set_ylabel("worst set-expansion regret"); ax.set_ylim(bottom=0); ax.grid(axis="x", visible=False)
 ax.legend(handles=[Line2D([], [], marker="o", ls="", mfc="white", mec=F.C["cos"], label="cosine"), Line2D([], [], marker="x", ls="", c=F.C["cos_sz"], label="cosine, size-aware"),
                    Line2D([], [], marker="o", ls="", c=F.C["sm"], label="SetWiseMatch")], loc="lower left", bbox_to_anchor=(0.0, 1.0), ncol=3, borderaxespad=0.1, columnspacing=0.8, handletextpad=0.2)
