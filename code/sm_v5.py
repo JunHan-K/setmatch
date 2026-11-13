@@ -67,6 +67,13 @@ def market(enc, split, name="market"):                            # 11-04: name=
 
     def sample(i, E, K, rng):                                      # 11-13 LEAK FIX v3: absent = the SAME present-construction run for ANOTHER query whose identity is absent here -> present/absent share one distribution
         p = D.qpid[i]
+        if K == 0:                                                 # full gallery: drop exactly ONE identity per side (present drops a decoy, keeps target; absent drops the target). N & identity count match.
+            d = p
+            while d == p:
+                d = int(D.qpid[int(rng.integers(len(D.qpid)))])
+            drop = d if E else p
+            it = np.concatenate([D.items[s] for s in D.ids[D.ids != drop]])
+            return it, (D.gpid[it] == p)
         if E:
             it = present_items(i, K, rng)
         else:
@@ -160,12 +167,12 @@ def scene(enc, split, name="cuhk", qpp=1):
         gtpid_t, gtimg_t = (pid[np.flatnonzero((~gal) & (sp == 1))], img[np.flatnonzero((~gal) & (sp == 1))]) if det else (None, None)
 
         def build(focus, G, excl, qimg, rng):                    # focus identity's TEST frames + distractor test frames; excl's frames kept out
-            foc = id_frames.get(int(focus), np.zeros(0, np.int64))
+            foc = id_frames.get(int(focus), np.zeros(0, np.int64)); dropped = -1
             if (foc == qimg).any():
                 foc = foc[foc != qimg]                           # present: the query's own frame is never a candidate
             elif len(foc) > 1:
-                foc = np.delete(foc, int(rng.integers(len(foc))))   # absent: drop one focus frame so the focus-cluster size matches present (symmetry)
-            bad = np.r_[foc, id_frames.get(int(excl), np.zeros(0, np.int64)), np.array([qimg], np.int64)]
+                di = int(rng.integers(len(foc))); dropped = int(foc[di]); foc = np.delete(foc, di)   # absent: drop one focus frame to match present losing the query frame
+            bad = np.r_[foc, id_frames.get(int(excl), np.zeros(0, np.int64)), np.array([qimg, dropped], np.int64)]   # dropped frame excluded from the distractor pool too (so it cannot reappear)
             pool = test_imgs[~np.isin(test_imgs, bad)]
             nd = max(G - len(foc), 0)
             fill = rng.choice(pool, min(nd, len(pool)), replace=False) if nd and len(pool) else np.zeros(0, np.int64)
@@ -179,13 +186,12 @@ def scene(enc, split, name="cuhk", qpp=1):
             it = build(qp, G, d, qimg, rng) if E else build(d, G, qp, qimg, rng)
             return it, (pid[it] == qp)
         D.sample = sample
-        if det:                                                  # det recall denominator = true GT target boxes in the test gallery (excluding the query frame), so detector misses still cost recall
+        if det:                                                  # det recall denominator = GT target boxes within the PRESENT gallery's own frames (so detector misses inside the gallery cost recall, but out-of-gallery GT does not)
             def ngt(i, G):
                 qp = int(D.qpid[i]); qimg = int(img[D.qbox[i]])
-                return int(((gtpid_t == qp) & (gtimg_t != qimg)).sum())
+                foc = id_frames.get(qp, np.zeros(0, np.int64)); foc = foc[foc != qimg][:G]   # the target's frames actually in the present gallery
+                return int(((gtpid_t == qp) & (gtimg_t != qimg) & np.isin(gtimg_t, foc)).sum())
             D.ngt = ngt
-        else:                                                    # GT galleries: every target box is a GT box -> episodes() uses int(tm.sum())
-            pass
     return D
 
 
