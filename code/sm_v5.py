@@ -67,12 +67,11 @@ def market(enc, split, name="market"):                            # 11-04: name=
 
     def sample(i, E, K, rng):                                      # 11-13 LEAK FIX v3: absent = the SAME present-construction run for ANOTHER query whose identity is absent here -> present/absent share one distribution
         p = D.qpid[i]
-        if K == 0:                                                 # full gallery: drop exactly ONE identity per side (present drops a decoy, keeps target; absent drops the target). N & identity count match.
+        if K == 0:                                                 # full gallery: drop exactly ONE identity per side (present drops a decoy & keeps target; absent drops the target) -> matched identity count
             d = p
             while d == p:
                 d = int(D.qpid[int(rng.integers(len(D.qpid)))])
-            drop = d if E else p
-            it = np.concatenate([D.items[s] for s in D.ids[D.ids != drop]])
+            it = np.concatenate([D.items[s] for s in D.ids[D.ids != (d if E else p)]])   # present keeps target & drops decoy, absent drops target: identity count matches. (For the presence/selection task a same-camera target still correctly signals presence, so no cross-camera filter here -- keeping it would shrink present and re-introduce an N gap.)
             return it, (D.gpid[it] == p)
         if E:
             it = present_items(i, K, rng)
@@ -150,46 +149,51 @@ def scene(enc, split, name="cuhk", qpp=1):
             D.test[G] = (z[f"G{G}_q"], z[f"G{G}_gal"], z[f"G{G}_has"])
         q = z[f"G{Gs[0]}_q"]; D.Fq, D.qpid, D.qbox = f[q], pid[q], q; D.ok = np.ones(len(q), bool); D.Gs = tuple(Gs)
         assert all((z[f"G{G}_q"] == q).all() for G in D.test), "TestG query order differs across gallery sizes"
-        # 11-13 LEAK FIX v3f: reconstruct present AND absent by ONE identical law (query-blind-indistinguishable), over the
-        # TEST-split gallery ONLY, and never including the query's own image. present = target's other test frames +
-        # distractor test frames; absent = a decoy query-identity's frames + distractors, with the target excluded.
-        tgal = np.flatnonzero(gal & (sp == 1))                   # gallery boxes in the TEST split only (reaudit: no train-split leakage)
+        # 11-13 LEAK FIX v3g: reconstruct present AND absent by ONE identical law (query-blind-indistinguishable), over the
+        # TEST split only, never the query's own image, and never a true target in an absent episode. Gallery FRAMES are
+        # chosen by where identities APPEAR (GT boxes for det, so detection cannot bias which frames enter); the candidate
+        # boxes in those frames are the gallery boxes (proposals for det, GT otherwise).
+        tgal = np.flatnonzero(gal & (sp == 1))                   # candidate boxes: TEST split only (no train leakage)
         tboxes_of = {}
         for b in tgal:
             tboxes_of.setdefault(int(img[b]), []).append(b)
         tboxes_of = {k: np.array(v) for k, v in tboxes_of.items()}
-        id_frames = {}
-        for b in tgal:
-            id_frames.setdefault(int(pid[b]), set()).add(int(img[b]))
-        id_frames = {k: np.array(sorted(v), dtype=np.int64) for k, v in id_frames.items()}
         test_imgs = np.fromiter((k for k in tboxes_of), dtype=np.int64, count=len(tboxes_of))
+        appb = np.flatnonzero((~gal) & (sp == 1)) if det else tgal   # where identities appear: GT boxes for det -> frame choice is detection-independent
+        gtpid_t, gtimg_t = pid[appb], img[appb]
+        appear = {}
+        for b in appb:
+            appear.setdefault(int(pid[b]), set()).add(int(img[b]))
+        appear = {k: np.array(sorted(v), dtype=np.int64) for k, v in appear.items()}
         qids = np.array(sorted(set(int(p) for p in D.qpid)), dtype=np.int64)
-        gtpid_t, gtimg_t = (pid[np.flatnonzero((~gal) & (sp == 1))], img[np.flatnonzero((~gal) & (sp == 1))]) if det else (None, None)
+        E0 = np.zeros(0, np.int64)
 
-        def build(focus, G, excl, qimg, rng):                    # focus identity's TEST frames + distractor test frames; excl's frames kept out
-            foc = id_frames.get(int(focus), np.zeros(0, np.int64)); dropped = -1
+        def build(focus, G, excl, qimg, rng):                    # focus identity's appearance frames + distractor frames; the excl identity's frames (and the query frame) are fully excluded so excl can never appear as a candidate
+            foc = appear.get(int(focus), E0); xf = appear.get(int(excl), E0); dropped = -1
+            foc = foc[~np.isin(foc, xf)]                         # drop frames where focus co-occurs with excl -> no excl box leaks in (absent stays target-free)
             if (foc == qimg).any():
                 foc = foc[foc != qimg]                           # present: the query's own frame is never a candidate
             elif len(foc) > 1:
                 di = int(rng.integers(len(foc))); dropped = int(foc[di]); foc = np.delete(foc, di)   # absent: drop one focus frame to match present losing the query frame
-            bad = np.r_[foc, id_frames.get(int(excl), np.zeros(0, np.int64)), np.array([qimg, dropped], np.int64)]   # dropped frame excluded from the distractor pool too (so it cannot reappear)
+            bad = np.r_[foc, xf, np.array([qimg, dropped], np.int64)]
             pool = test_imgs[~np.isin(test_imgs, bad)]
             nd = max(G - len(foc), 0)
-            fill = rng.choice(pool, min(nd, len(pool)), replace=False) if nd and len(pool) else np.zeros(0, np.int64)
+            fill = rng.choice(pool, min(nd, len(pool)), replace=False) if nd and len(pool) else E0
             ims = np.r_[foc[:G], fill]
-            return np.concatenate([tboxes_of[int(k)] for k in ims]).astype(np.int64) if len(ims) else np.zeros(0, np.int64)
+            cb = [tboxes_of[int(k)] for k in ims if int(k) in tboxes_of]   # candidate boxes (a GT-only frame with no proposal contributes none, but still counts for recall)
+            return np.concatenate(cb).astype(np.int64) if cb else E0
 
-        def sample(i, E, G, rng):                                # symmetric decoy; present = target focus (decoy excluded), absent = decoy focus (target excluded); the query's own image is never a candidate
+        def sample(i, E, G, rng):                                # symmetric decoy; present = target focus (decoy excluded), absent = decoy focus (target excluded)
             qp = int(D.qpid[i]); qimg = int(img[D.qbox[i]]); d = qp
             while d == qp:
                 d = int(qids[rng.integers(len(qids))])
             it = build(qp, G, d, qimg, rng) if E else build(d, G, qp, qimg, rng)
             return it, (pid[it] == qp)
         D.sample = sample
-        if det:                                                  # det recall denominator = GT target boxes within the PRESENT gallery's own frames (so detector misses inside the gallery cost recall, but out-of-gallery GT does not)
+        if det:                                                  # det recall denominator = GT target boxes in the target's gallery frames (GT-defined, so detector misses still cost recall)
             def ngt(i, G):
                 qp = int(D.qpid[i]); qimg = int(img[D.qbox[i]])
-                foc = id_frames.get(qp, np.zeros(0, np.int64)); foc = foc[foc != qimg][:G]   # the target's frames actually in the present gallery
+                foc = appear.get(qp, E0); foc = foc[foc != qimg][:G]
                 return int(((gtpid_t == qp) & (gtimg_t != qimg) & np.isin(gtimg_t, foc)).sum())
             D.ngt = ngt
     return D
@@ -215,6 +219,7 @@ def episodes(D, Ks, n, seed):
         for K in Ks:
             for E in (0, 1):
                 it, tm = D.sample(i, E, K, g)
+                assert E or not tm.any(), f"absent episode (K={K}) contains a true target"   # invariant: no-match episodes are genuinely target-free
                 if len(it) < 2 or (E and not tm.any() and not getattr(D, "det", False)):
                     continue
                 s = D.Fg[it] @ D.Fq[i]; o = np.argsort(-s)
