@@ -57,6 +57,10 @@ def market(enc, split, name="market"):                            # 11-04: name=
     D.Fg, D.gpid, D.gcam = f[g], pid[g], cam[g]
     D.ids = np.unique(D.gpid); D.items = {p: np.flatnonzero(D.gpid == p) for p in D.ids}
     D.ok = np.array([(D.gcam[D.items.get(p, np.zeros(0, int))] != c).any() for p, c in zip(D.qpid, D.qcam)])
+    byc = {}                                                       # gallery identities grouped by image count (for an exact-size K=0 decoy)
+    for q in D.ids:
+        byc.setdefault(len(D.items[q]), []).append(int(q))
+    idcnt = np.array([len(D.items[q]) for q in D.ids])
 
     def present_items(ii, K, rng):                                 # K-1 distractor identities + the "focus" identity's images (identical layout for every query)
         p = D.qpid[ii]; pool = D.ids[D.ids != p]
@@ -67,11 +71,13 @@ def market(enc, split, name="market"):                            # 11-04: name=
 
     def sample(i, E, K, rng):                                      # 11-13 LEAK FIX v3: absent = the SAME present-construction run for ANOTHER query whose identity is absent here -> present/absent share one distribution
         p = D.qpid[i]
-        if K == 0:                                                 # full gallery: drop exactly ONE identity per side (present drops a decoy & keeps target; absent drops the target) -> matched identity count
-            d = p
-            while d == p:
-                d = int(D.qpid[int(rng.integers(len(D.qpid)))])
-            it = np.concatenate([D.items[s] for s in D.ids[D.ids != (d if E else p)]])   # present keeps target & drops decoy, absent drops target: identity count matches. (For the presence/selection task a same-camera target still correctly signals presence, so no cross-camera filter here -- keeping it would shrink present and re-introduce an N gap.)
+        if K == 0:                                                 # full gallery: present drops a decoy & keeps the target, absent drops the target. The decoy has the SAME image count as the target, so BOTH identity count and candidate count match exactly.
+            np_ = len(D.items[p]); same = [q for q in byc.get(np_, ()) if q != p]
+            if same:
+                d = int(same[int(rng.integers(len(same)))])
+            else:                                                  # no identity shares the target's size -> nearest count
+                order = np.argsort(np.abs(idcnt - np_)); d = next(int(D.ids[o]) for o in order if D.ids[o] != p)
+            it = np.concatenate([D.items[s] for s in D.ids[D.ids != (d if E else p)]])   # (presence/selection task: a same-camera target still signals presence, so no cross-camera filter here)
             return it, (D.gpid[it] == p)
         if E:
             it = present_items(i, K, rng)
