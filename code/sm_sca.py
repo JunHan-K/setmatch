@@ -29,11 +29,11 @@ def run(xtr, ctr, Etr, Ktr, Ntr, xte, cte, E, K, N):
     for k in np.unique(K):
         m = K == k; a = xte[m] > t[m]; e = E[m] == 1; ok = cte[m] > 0
         d_, f_ = (a & ok)[e].mean(), a[~e].mean(); acc.append(0.5 * d_ + 0.5 * (1 - f_)); dr.append(d_); far.append(f_)
-        h1, h0 = strict_curves(xte[m], cte[m], E[m], grid); orc.append((0.5 * h1 + 0.5 * h0).max())
+        og = np.unique(xte[m]); ho1, ho0 = strict_curves(xte[m], cte[m], E[m], og); orc.append((0.5 * ho1 + 0.5 * ho0).max())   # oracle on this cell's own test boundaries
     out.update(acc_mean=float(np.mean(acc)), acc_worst=float(np.min(acc)), dir=float(np.mean(dr)), far_max=float(np.max(far)), gap=float(np.max(np.array(orc) - np.array(acc))))
     b1, b0 = fit(xtr, ctr, Etr, Ktr, Ntr, grid, "selective"); t = b0 + b1 * np.log(N); w = 0.0
     for k in np.unique(K):
-        m = K == k; g1, g0 = EV.acc_grid(xte[m], cte[m], E[m], grid); a = xte[m] > t[m]; e = E[m] == 1; ok = cte[m] > 0
+        m = K == k; g1, g0 = EV.acc_grid(xte[m], cte[m], E[m], np.unique(xte[m])); a = xte[m] > t[m]; e = E[m] == 1; ok = cte[m] > 0   # selective oracle on test boundaries
         a1 = (a == ok)[e].mean(); a0 = (~a)[~e].mean()
         for pi in (0.2, 0.5, 0.8):
             w = max(w, float(np.max(pi * g1 + (1 - pi) * g0) - (pi * a1 + (1 - pi) * a0)))

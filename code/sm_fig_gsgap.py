@@ -8,7 +8,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-R = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+R = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+os.makedirs(os.path.join(R, "new_paper/figs"), exist_ok=True)
 P = json.load(open(os.path.join(R, "results/setmatch/sel.json")))["gsf"]["points"]
 REID = ("osnet_ain_x1_0_msmt17", "transreidssl_msmt", "solider_msmt", "seqnet")
 mk = {"cuhk": "o", "cuhkdet": "^", "prw": "s", "prwdet": "v", "market": "D", "cuhkseq": "*", "prwseq": "P"}

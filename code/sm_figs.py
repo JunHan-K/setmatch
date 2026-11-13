@@ -15,7 +15,7 @@ from matplotlib.lines import Line2D
 import figstyle as F
 from figstyle import plt
 
-R = os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")); O = os.path.join(R, "results/setmatch"); V5 = os.path.join(O, "v5"); P = os.path.join(R, "new_paper/figs")
+R = os.path.abspath(os.path.join(os.path.dirname(__file__), "..")); O = os.path.join(R, "results/setmatch"); V5 = os.path.join(O, "v5"); P = os.path.join(R, "new_paper/figs"); os.makedirs(P, exist_ok=True)
 ENC = ("osnet_ain_x1_0_msmt17", "transreidssl_msmt", "solider_msmt", "dinov2", "clip"); EN = dict(zip(ENC + ("seqnet",), ("OSNet", "TReID-SSL", "SOLIDER", "DINOv2", "CLIP", "SeqNet"))); ENS = dict(EN, transreidssl_msmt="TReID")
 CELLS = [f"{d}_{e}" for d in ("cuhk", "cuhkdet", "prw", "prwdet", "market") for e in ENC] + ["cuhkseq_seqnet", "prwseq_seqnet"]
 J = lambda f: json.load(open(os.path.join(O, f)))

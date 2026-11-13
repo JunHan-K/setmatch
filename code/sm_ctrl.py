@@ -21,7 +21,7 @@ SMT = os.environ.get("SM_TAG", "_s10main")   # 11-04: "_s20" = all 20 seeds (mai
 import sm_v5_eval as EV
 
 warnings.filterwarnings("ignore")
-R = os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")); O = os.path.join(R, "results/setmatch"); V5 = os.path.join(O, "v5")
+R = os.path.abspath(os.path.join(os.path.dirname(__file__), "..")); O = os.path.join(R, "results/setmatch"); V5 = os.path.join(O, "v5")
 ENC = ("osnet_ain_x1_0_msmt17", "transreidssl_msmt", "solider_msmt", "dinov2", "clip")
 CELLS = [f"{d}_{e}" for d in ("cuhk", "cuhkdet", "prw", "prwdet", "market") for e in ENC] + ["cuhkseq_seqnet", "prwseq_seqnet"]
 KT = {"market": "10-20-50-100-200-0", "cuhk": "50-100-200-500", "prw": "50-100-200-500-1000", "cuhkdet": "50-100-200-500", "prwdet": "50-100-200-500-1000", "cuhkseq": "50-100-200-500", "prwseq": "50-100-200-500-1000"}
@@ -44,8 +44,10 @@ def evaluate(xtr, ctr, Etr, xte, cte, E, K, ap, r1, space):
     grid = np.unique(np.quantile(xtr, np.linspace(0, 1, 401))); g1, g0 = strict_curves(xtr, ctr, Etr, grid); j = int(np.argmax(0.5 * g1 + 0.5 * g0))
     acc, orc, dir_, far = [], [], [], []
     for k in np.unique(K):
-        m = K == k; h1, h0 = strict_curves(xte[m], cte[m], E[m], grid); a = 0.5 * h1 + 0.5 * h0
-        acc.append(a[j]); orc.append(a.max()); dir_.append(h1[j]); far.append(1 - h0[j])
+        m = K == k; h1, h0 = strict_curves(xte[m], cte[m], E[m], grid)
+        og = np.unique(np.r_[xte[m], grid[j]])                      # oracle scans this cell's OWN test boundaries (+ frozen t), not the train grid -> honest per-size oracle & regret
+        o1, o0 = strict_curves(xte[m], cte[m], E[m], og)
+        acc.append((0.5 * h1 + 0.5 * h0)[j]); orc.append((0.5 * o1 + 0.5 * o0).max()); dir_.append(h1[j]); far.append(1 - h0[j])
     acc, orc = np.array(acc), np.array(orc)
     out.update(acc_worst=float(acc.min()), acc_mean=float(acc.mean()), oracle_mean=float(orc.mean()), strict_regret=float((orc - acc).max()),
                dir_mean=float(np.mean(dir_)), far_max=float(np.max(far)), far_mean=float(np.mean(far)))

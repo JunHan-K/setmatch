@@ -12,7 +12,8 @@ import numpy as np
 SMT = os.environ.get("SM_TAG", "_s10main")   # 11-04: "_s20" = all 20 seeds (main numbers), default = 10 seeds
 from scipy.stats import spearmanr
 
-R = os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")); O = os.path.join(R, "results/setmatch"); V5 = os.path.join(O, "v5")
+R = os.path.abspath(os.path.join(os.path.dirname(__file__), "..")); O = os.path.join(R, "results/setmatch"); V5 = os.path.join(O, "v5")
+os.makedirs(os.path.join(R, "new_paper/figs"), exist_ok=True)
 ENC = ("osnet_ain_x1_0_msmt17", "transreidssl_msmt", "solider_msmt", "dinov2", "clip")
 CELLS = [f"{d}_{e}" for d in ("cuhk", "prw", "cuhkdet", "prwdet", "market") for e in ENC] + ["cuhkseq_seqnet", "prwseq_seqnet"]
 KT = {"market": "10-20-50-100-200-0", "cuhk": "50-100-200-500", "prw": "50-100-200-500-1000", "cuhkdet": "50-100-200-500", "prwdet": "50-100-200-500-1000", "cuhkseq": "50-100-200-500", "prwseq": "50-100-200-500-1000"}

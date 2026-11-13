@@ -9,7 +9,7 @@ import os
 import numpy as np
 from scipy.stats import rankdata
 
-R = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+R = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 V5 = os.path.join(R, "results/setmatch/v5")
 BASE = ("raw", "margin", "sdse", "pnull")
 LEARN = ("pair_bce", "pair_null", "ctx", "attn", "setmatch", "ctx_cal", "attn_cal", "ctx_w", "attn_w", "ctx_cal_w", "attn_cal_w")
@@ -45,11 +45,13 @@ def metrics(xtr, ctr, Etr, xte, cte, E, K, ap, r1, space=None):
     t1, t0 = acc_grid(xtr, ctr, Etr, grid); fz = grid[int(np.argmax(0.5 * t1 + 0.5 * t0))]; cells = {}
     for k in np.unique(K):
         m = K == k; x, c, e = xte[m], cte[m], E[m]
-        g1, g0 = acc_grid(x, c, e, grid)
-        cells[int(k)] = dict(auroc=auc(x, c), regret={pi: float(np.max(pi * g1 + (1 - pi) * g0) - acc(x, c, e, pi, fz)) for pi in (0.2, 0.5, 0.8)},
-                             mAP=float(np.nanmean(ap[m & (E == 1)])), R1=float(np.nanmean(r1[m & (E == 1)])), acc_frozen=float(acc(x, c, e, 0.5, fz)))
+        og = np.unique(np.r_[x, fz])                                  # oracle scans this cell's OWN test-score boundaries (+ frozen t), not the train grid -> no oracle/regret understatement
+        og1, og0 = acc_grid(x, c, e, og)
+        mAP = float(np.nanmean(np.clip(ap[m & (E == 1)], 0.0, 1.0)))   # guard: AP in [0,1] (detector duplicate proposals could otherwise exceed 1)
+        cells[int(k)] = dict(auroc=auc(x, c), regret={pi: float(np.max(pi * og1 + (1 - pi) * og0) - acc(x, c, e, pi, fz)) for pi in (0.2, 0.5, 0.8)},
+                             mAP=mAP, R1=float(np.nanmean(np.clip(r1[m & (E == 1)], 0.0, 1.0))), acc_frozen=float(acc(x, c, e, 0.5, fz)))
         if space:
-            cells[int(k)]["regret_pc"] = {pi: float(np.max(pi * g1 + (1 - pi) * g0) - acc(x, c, e, pi, fz - np.log(pi / (1 - pi)))) for pi in (0.2, 0.5, 0.8)}
+            cells[int(k)]["regret_pc"] = {pi: float(np.max(pi * og1 + (1 - pi) * og0) - acc(x, c, e, pi, fz - np.log(pi / (1 - pi)))) for pi in (0.2, 0.5, 0.8)}
     return cells
 
 

@@ -15,7 +15,7 @@ NSEED = "20" if SMT == "_s20" else "10"
 import sm_v5_eval as EV
 
 warnings.filterwarnings("ignore")
-R = os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")); O = os.path.join(R, "results/setmatch"); V5 = os.path.join(O, "v5"); P = os.path.join(R, "new_paper")
+R = os.path.abspath(os.path.join(os.path.dirname(__file__), "..")); O = os.path.join(R, "results/setmatch"); V5 = os.path.join(O, "v5"); P = os.path.join(R, "new_paper")
 ENC = ("osnet_ain_x1_0_msmt17", "transreidssl_msmt", "solider_msmt", "dinov2", "clip"); EN = dict(zip(ENC + ("seqnet",), ("OSNet", "TReID", "SOLIDER", "DINOv2", "CLIP", "SeqNet")))
 DS = (("cuhk", "CUHK-SYSU"), ("cuhkdet", "CUHK prop."), ("prw", "PRW"), ("prwdet", "PRW prop."), ("market", "Market"))
 CELLS = [f"{d}_{e}" for d, _ in DS for e in ENC] + ["cuhkseq_seqnet", "prwseq_seqnet"]

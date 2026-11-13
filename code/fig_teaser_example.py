@@ -10,7 +10,7 @@ from matplotlib.patches import Circle, FancyBboxPatch, Rectangle
 import figstyle as F
 from figstyle import plt
 
-R = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+R = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 TRUE, DIST, QRY = F.INK2, "#c9c8c3", F.INK2
 
 
@@ -37,4 +37,4 @@ for y, lab, cands, cos_pick, sm_pick, dec in rows:
         c = F.C["sm"] if n == "SetWiseMatch" else F.INK2; yy = y + 1.2 - 0.55 * i
         ax.text(6.75, yy, n, fontsize=5.8, color=c, va="center"); ax.text(9.95, yy, o, fontsize=5.8, color=c, ha="right", va="center")
 ax.text(5.5, 0.05, "illustrative silhouettes; real scores of one CUHK-SYSU query", ha="center", fontsize=5.2, color=F.MUTED, style="italic")
-fig.tight_layout(pad=0.1); P = os.path.join(R, "new_paper/figs"); fig.savefig(os.path.join(P, "teaser_example.pdf")); fig.savefig(os.path.join(P, "teaser_example.png"), dpi=250)
+fig.tight_layout(pad=0.1); P = os.path.join(R, "new_paper/figs"); os.makedirs(P, exist_ok=True); fig.savefig(os.path.join(P, "teaser_example.pdf")); fig.savefig(os.path.join(P, "teaser_example.png"), dpi=250)

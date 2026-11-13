@@ -5,7 +5,7 @@ import json
 import os
 import sys
 
-R = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+R = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OURS = sys.argv[1] if len(sys.argv) > 1 else "ctx_eff"
 DS = [("cuhk", "CUHK-SYSU"), ("cuhkdet", "CUHK prop."), ("prw", "PRW"), ("prwdet", "PRW prop."), ("market", "Market")]
 ENC = [("osnet_ain_x1_0_msmt17", "OSNet"), ("transreidssl_msmt", "TReID"), ("solider_msmt", "SOLIDER"), ("dinov2", "DINOv2"), ("clip", "CLIP")]

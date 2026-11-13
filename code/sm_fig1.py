@@ -8,7 +8,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-R = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+R = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+os.makedirs(os.path.join(R, "new_paper/figs"), exist_ok=True)
 fig, ax = plt.subplots(figsize=(3.3, 2.2)); col = {"0.6-0.7": "#c53030", "0.7-0.8": "#dd6b20", "0.8-0.9": "#2b6cb0"}
 for d, ls in (("cuhk", "-"), ("prw", "--")):
     z = json.load(open(os.path.join(R, f"results/setmatch/fig1_{d}_osnet_ain_x1_0_msmt17.json")))

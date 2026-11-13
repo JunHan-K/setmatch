@@ -8,7 +8,7 @@ import numpy as np
 import figstyle as F
 from figstyle import plt
 
-R = os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")); V5 = os.path.join(R, "results/setmatch/v5"); P = os.path.join(R, "new_paper/figs")
+R = os.path.abspath(os.path.join(os.path.dirname(__file__), "..")); V5 = os.path.join(R, "results/setmatch/v5"); P = os.path.join(R, "new_paper/figs"); os.makedirs(P, exist_ok=True)
 lgt = lambda x: np.log(np.clip(x, 1e-9, 1.0)); FG = np.linspace(0.0, 0.3, 61)
 
 

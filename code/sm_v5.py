@@ -32,7 +32,7 @@ import torch
 import torch.nn as nn
 from scipy.stats import kurtosis, norm, skew, weibull_min
 
-R = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+R = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 O = os.path.join(R, "results/setmatch")
 M = 64
 dev = "cuda"
@@ -44,7 +44,7 @@ class Dom:
 
 
 def market(enc, split, name="market"):                            # 11-04: name="rpif" (RPIfield, CF) uses the same layout
-    z = np.load(os.path.join(O, "feats", f"{name}_{enc}.npz")); f = z["f"].astype(np.float32); pid, cam, sp = z["pid"], z["cam"], z["split"]
+    z = np.load(os.path.join(O, "feats", f"{name}_{enc}.npz")); f = z["f"].astype(np.float32); f /= np.linalg.norm(f, axis=1, keepdims=True) + 1e-12; pid, cam, sp = z["pid"], z["cam"], z["split"]   # L2 so Fg @ Fq is cosine (features are already unit-norm; idempotent)
     D = Dom(); rng = np.random.default_rng(0)
     if split == "train":
         g = np.flatnonzero((sp == 0) & (pid > 0)); q = []
@@ -78,6 +78,7 @@ def scene(enc, split, name="cuhk", qpp=1):
     """CUHK-SYSU / PRW with GT boxes (cuhk, prw) or frozen proposals (cuhkdet, prwdet: gallery = proposals, queries =
     GT boxes stored with gal = 0)"""
     z = np.load(os.path.join(O, f"{name}_index.npz")); f = np.load(os.path.join(O, "feats", f"{name}_{enc}.npz"))["f"].astype(np.float32)
+    f /= np.linalg.norm(f, axis=1, keepdims=True) + 1e-12            # L2 so Fg @ Fq is cosine (features are already unit-norm; idempotent)
     img, pid, sp = z["img"], z["pid"], z["split"]; det = "gal" in z; gal = z["gal"] if det else np.ones(len(img), bool)
     boxes_of = {}
     for b in np.flatnonzero(gal):
