@@ -58,17 +58,29 @@ def market(enc, split, name="market"):                            # 11-04: name=
     D.ids = np.unique(D.gpid); D.items = {p: np.flatnonzero(D.gpid == p) for p in D.ids}
     D.ok = np.array([(D.gcam[D.items.get(p, np.zeros(0, int))] != c).any() for p, c in zip(D.qpid, D.qcam)])
 
-    def sample(i, E, K, rng):                                      # 11-12 LEAK FIX: candidate count N identical for E=0/1 (no set-size cue to presence)
-        p = D.qpid[i]; pool = D.ids[D.ids != p]
-        sel = pool if K == 0 else rng.choice(pool, min(K, len(pool)), replace=False)   # K distractor identities (was K - E)
-        di = np.concatenate([D.items[s] for s in sel])
-        if E:                                                      # swap the target in for an equal number of distractor images -> |candidates| unchanged
-            t = D.items[p]; t = t[D.gcam[t] != D.qcam[i]]
-            if len(t) and len(di) > len(t):
-                di = di[rng.choice(len(di), len(di) - len(t), replace=False)]
-            it = np.concatenate([di, t])
+    def present_items(ii, K, rng):                                 # K-1 distractor identities + the "focus" identity's images (identical layout for every query)
+        p = D.qpid[ii]; pool = D.ids[D.ids != p]
+        sel = pool if K == 0 else rng.choice(pool, min(K - 1, len(pool)), replace=False)
+        di = np.concatenate([D.items[s] for s in sel]) if len(sel) else np.zeros(0, int)
+        t = D.items[p]; t = t[D.gcam[t] != D.qcam[ii]]
+        return np.concatenate([di, t])
+
+    def sample(i, E, K, rng):                                      # 11-13 LEAK FIX v3: absent = the SAME present-construction run for ANOTHER query whose identity is absent here -> present/absent share one distribution
+        p = D.qpid[i]
+        if E:
+            it = present_items(i, K, rng)
         else:
-            it = di
+            it = None
+            for _ in range(64):
+                j = int(rng.integers(len(D.qpid)))
+                if D.qpid[j] == p:
+                    continue
+                cand = present_items(j, K, rng)
+                if not np.any(D.gpid[cand] == p):                  # our target genuinely absent from the borrowed layout
+                    it = cand; break
+            if it is None:                                         # fallback (rare): K distractor identities
+                pool = D.ids[D.ids != p]; sel = pool if K == 0 else rng.choice(pool, min(K, len(pool)), replace=False)
+                it = np.concatenate([D.items[s] for s in sel])
         return it, (D.gpid[it] == p)
     D.sample = sample
     return D
@@ -98,18 +110,32 @@ def scene(enc, split, name="cuhk", qpp=1):
         for b in q:
             D.pimgs[b] = np.unique(img[(pid == pid[b]) & (img != img[b]) & src])
         D.Fq, D.qpid, D.qbox = f[q], pid[q], q; D.ok = np.ones(len(q), bool)
-        tr_boxset = np.concatenate([boxes_of[int(k)] for k in tr_imgs])   # 11-12 LEAK FIX: box pool for size-matched absent episodes
 
-        def sample(i, E, G, rng):
-            b = D.qbox[i]; t = D.pimgs[b]; t = t[np.isin(t, tr_imgs)]; others = tr_imgs[~np.isin(tr_imgs, np.r_[t, img[b]])]
-            ims = np.r_[t[:G], rng.choice(others, max(G - len(t), 1), replace=False)]   # present layout fixes N
-            pit = np.concatenate([boxes_of[int(k)] for k in ims])
+        def present_items(ii, G, rng):                                   # G whole images: the focus identity's images + target-free fill (identical layout for every query)
+            b = D.qbox[ii]; t = D.pimgs[b]; t = t[np.isin(t, tr_imgs)]
+            free = tr_imgs[~np.isin(tr_imgs, np.r_[t, img[b]])]
+            nfill = max(G - len(t), 0)
+            ims = np.r_[t[:G], rng.choice(free, min(nfill, len(free)), replace=False)] if nfill else t[:G]
+            return np.concatenate([boxes_of[int(k)] for k in ims]) if len(ims) else np.zeros(0, int)
+
+        def sample(i, E, G, rng):                                        # 11-13 LEAK FIX v3: absent = the SAME layout built for ANOTHER query lacking this target -> one distribution for present/absent
+            p = pid[D.qbox[i]]
             if E:
-                it = pit
-            else:                                                        # 11-12 LEAK FIX: absent = non-target boxes matched to the present candidate count
-                opool = tr_boxset[pid[tr_boxset] != pid[b]]
-                it = rng.choice(opool, min(len(pit), len(opool)), replace=False)
-            return it, (pid[it] == pid[b])
+                it = present_items(i, G, rng)
+            else:
+                it = None
+                for _ in range(64):
+                    j = int(rng.integers(len(D.qbox)))
+                    if pid[D.qbox[j]] == p:
+                        continue
+                    cand = present_items(j, G, rng)
+                    if not np.any(pid[cand] == p):
+                        it = cand; break
+                if it is None:                                           # fallback (rare): G target-free whole images
+                    free = tr_imgs[~np.isin(tr_imgs, np.r_[D.pimgs[D.qbox[i]], img[D.qbox[i]]])]
+                    ims = rng.choice(free, min(G, len(free)), replace=False)
+                    it = np.concatenate([boxes_of[int(k)] for k in ims]) if len(ims) else np.zeros(0, int)
+            return it, (pid[it] == p)
         D.sample = sample
     else:
         D.test = {}; Gs = sorted(int(k[1:-2]) for k in z.files if k.startswith("G") and k.endswith("_q"))
@@ -117,23 +143,32 @@ def scene(enc, split, name="cuhk", qpp=1):
             D.test[G] = (z[f"G{G}_q"], z[f"G{G}_gal"], z[f"G{G}_has"])
         q = z[f"G{Gs[0]}_q"]; D.Fq, D.qpid, D.qbox = f[q], pid[q], q; D.ok = np.ones(len(q), bool); D.Gs = tuple(Gs)
         assert all((z[f"G{G}_q"] == q).all() for G in D.test), "TestG query order differs across gallery sizes"
-        galbox = np.flatnonzero(gal); gimg = img[galbox]; gbpid = pid[galbox]   # 11-12 LEAK FIX: pool for size-matched absent galleries
+        # 11-13 LEAK FIX v3e: reconstruct present AND absent by ONE identical law, so a query-blind classifier cannot
+        # separate them at ANY gallery size. present = the target's frames + random distractor frames up to G images;
+        # absent = a DECOY identity's frames + random distractor frames, with the target's frames explicitly excluded.
+        id_frames = {}
+        for b in np.flatnonzero(gal):
+            id_frames.setdefault(int(pid[b]), set()).add(int(img[b]))
+        id_frames = {k: np.array(sorted(v), dtype=np.int64) for k, v in id_frames.items()}
+        all_imgs = np.fromiter((k for k in boxes_of), dtype=np.int64, count=len(boxes_of))
+        qids = np.array(sorted(set(int(p) for p in D.qpid)), dtype=np.int64)   # decoy pool: query identities (same distribution as the target focus)
 
-        def sample(i, E, G, rng):
-            qs, galr, has = D.test[G]; r = i                      # query order is identical across TestG files
-            if E:
-                it = np.concatenate([boxes_of[int(k)] for k in galr[r] if int(k) in boxes_of])
-            else:                                                # 11-12 LEAK FIX: match N to the present gallery so set size cannot reveal presence
-                present = sum(len(boxes_of[int(k)]) for k in galr[r] if int(k) in boxes_of)
-                keptims = galr[r][~has[r]]
-                kept = np.concatenate([boxes_of[int(k)] for k in keptims if int(k) in boxes_of]) if len(keptims) else np.zeros(0, int)
-                need = present - len(kept); qp = D.qpid[i]
-                pool = galbox[(gbpid != qp) & ~np.isin(gimg, galr[r])]
-                add = rng.choice(pool, min(need, len(pool)), replace=False) if need > 0 and len(pool) else np.zeros(0, int)
-                it = np.concatenate([kept, add]).astype(np.int64)
-            return it, (pid[it] == D.qpid[i])
-        D.sample = sample
-        D.ngt = lambda i, G: int(D.test[G][2][i].sum())            # target images in the gallery (recall denominator)
+        def build(focus, G, excl, rng):                          # focus identity's frames + distractor fill to G images, with excl's frames kept out
+            foc = id_frames.get(int(focus), np.zeros(0, np.int64))
+            bad = np.r_[foc, id_frames.get(int(excl), np.zeros(0, np.int64))]
+            pool = all_imgs[~np.isin(all_imgs, bad)]
+            nd = max(G - len(foc), 0)
+            fill = rng.choice(pool, min(nd, len(pool)), replace=False) if nd and len(pool) else np.zeros(0, np.int64)
+            ims = np.r_[foc[:G], fill]
+            return np.concatenate([boxes_of[int(k)] for k in ims]).astype(np.int64) if len(ims) else np.zeros(0, np.int64)
+
+        def sample(i, E, G, rng):                                # fully SYMMETRIC: pick a decoy query-identity d; present = target focus (d excluded), absent = d focus (target excluded). Swapping the two roles is the only difference -> query-blind-indistinguishable at every G.
+            qp = int(D.qpid[i]); d = qp
+            while d == qp:
+                d = int(qids[rng.integers(len(qids))])
+            it = build(qp, G, d, rng) if E else build(d, G, qp, rng)
+            return it, (pid[it] == qp)
+        D.sample = sample                                        # recall denominator = target boxes in the present gallery -> episodes() uses int(tm.sum())
     return D
 
 

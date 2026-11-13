@@ -21,7 +21,7 @@ G = np.linspace(0.2, 1.3, 111)
 
 
 def feats(name, enc):
-    return np.load(os.path.join(O, "feats", f"{name}_{enc}.npz"))["f"].astype(np.float32)
+    f = np.load(os.path.join(O, "feats", f"{name}_{enc}.npz"))["f"].astype(np.float32); return f / (np.linalg.norm(f, axis=1, keepdims=True) + 1e-12)   # L2 -> dot is cosine (match sm_v5)
 
 
 def fit(x, N):
@@ -54,7 +54,7 @@ def qstd(S, cols):
 
 
 def market_eps(enc, rng, std=False):
-    z = np.load(os.path.join(O, "feats", f"market_{enc}.npz")); f = z["f"].astype(np.float32); pid, sp = z["pid"], z["split"]
+    z = np.load(os.path.join(O, "feats", f"market_{enc}.npz")); f = z["f"].astype(np.float32); f /= np.linalg.norm(f, axis=1, keepdims=True) + 1e-12; pid, sp = z["pid"], z["split"]
     g = np.flatnonzero((sp == 1) & (pid > 0)); q = np.flatnonzero(sp == 2); ids = np.unique(pid[g]); S = f[q] @ f[g].T
     if std:
         S = qstd(S, np.arange(S.shape[1]))
@@ -117,7 +117,7 @@ def cooccur(z, f, test, rng, iou_max=0.1, nimg=None):
 def labelled_null(name, enc, rng):
     """impostor scores of a labelled TRAIN split (source / in-domain reference)"""
     if name == "market":
-        z = np.load(os.path.join(O, "feats", f"market_{enc}.npz")); f = z["f"].astype(np.float32); pid, sp = z["pid"], z["split"]
+        z = np.load(os.path.join(O, "feats", f"market_{enc}.npz")); f = z["f"].astype(np.float32); f /= np.linalg.norm(f, axis=1, keepdims=True) + 1e-12; pid, sp = z["pid"], z["split"]
         b = np.flatnonzero((sp == 0) & (pid > 0))
     else:
         z = np.load(os.path.join(O, f"{name}_index.npz")); f = feats(name, enc); pid = z["pid"]; b = np.flatnonzero((z["split"] == 0) & (pid > 0))

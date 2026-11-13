@@ -22,7 +22,7 @@ K0 = 200; MS = (1, 4, 8, 16, 32)                               # 8: unseen inter
 
 
 def hard_eps(data, enc, rng):
-    z = np.load(os.path.join(V.O, f"{data}_index.npz")); f = V.np.load(os.path.join(V.O, "feats", f"{data}_{enc}.npz"))["f"].astype(np.float32)
+    z = np.load(os.path.join(V.O, f"{data}_index.npz")); f = V.np.load(os.path.join(V.O, "feats", f"{data}_{enc}.npz"))["f"].astype(np.float32); f /= V.np.linalg.norm(f, axis=1, keepdims=True) + 1e-12   # L2 -> dot is cosine (match sm_v5)
     img, pid = z["img"], z["pid"]; test = z["split"] == 1; tb = np.flatnonzero(test); timgs = np.unique(img[tb])
     q = z[sorted(k for k in z.files if k.startswith("G") and k.endswith("_q"))[0]]; Fq = f[q]
     box_of = {}

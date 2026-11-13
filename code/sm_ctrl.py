@@ -45,7 +45,7 @@ def evaluate(xtr, ctr, Etr, xte, cte, E, K, ap, r1, space):
     acc, orc, dir_, far = [], [], [], []
     for k in np.unique(K):
         m = K == k; h1, h0 = strict_curves(xte[m], cte[m], E[m], grid)
-        og = np.unique(np.r_[xte[m], grid[j]])                      # oracle scans this cell's OWN test boundaries (+ frozen t), not the train grid -> honest per-size oracle & regret
+        og = np.unique(np.r_[xte[m], grid[j], np.nextafter(xte[m].min(), -np.inf)])   # oracle scans this cell's OWN test boundaries (+ frozen t + accept-all point) -> honest per-size oracle & regret
         o1, o0 = strict_curves(xte[m], cte[m], E[m], og)
         acc.append((0.5 * h1 + 0.5 * h0)[j]); orc.append((0.5 * o1 + 0.5 * o0).max()); dir_.append(h1[j]); far.append(1 - h0[j])
     acc, orc = np.array(acc), np.array(orc)

@@ -45,7 +45,7 @@ def metrics(xtr, ctr, Etr, xte, cte, E, K, ap, r1, space=None):
     t1, t0 = acc_grid(xtr, ctr, Etr, grid); fz = grid[int(np.argmax(0.5 * t1 + 0.5 * t0))]; cells = {}
     for k in np.unique(K):
         m = K == k; x, c, e = xte[m], cte[m], E[m]
-        og = np.unique(np.r_[x, fz])                                  # oracle scans this cell's OWN test-score boundaries (+ frozen t), not the train grid -> no oracle/regret understatement
+        og = np.unique(np.r_[x, fz, np.nextafter(x.min(), -np.inf)])   # oracle scans this cell's OWN test boundaries (+ frozen t + an accept-all point below min(x)) -> no oracle/regret understatement
         og1, og0 = acc_grid(x, c, e, og)
         mAP = float(np.nanmean(np.clip(ap[m & (E == 1)], 0.0, 1.0)))   # guard: AP in [0,1] (detector duplicate proposals could otherwise exceed 1)
         cells[int(k)] = dict(auroc=auc(x, c), regret={pi: float(np.max(pi * og1 + (1 - pi) * og0) - acc(x, c, e, pi, fz)) for pi in (0.2, 0.5, 0.8)},
