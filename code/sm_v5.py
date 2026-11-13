@@ -143,32 +143,49 @@ def scene(enc, split, name="cuhk", qpp=1):
             D.test[G] = (z[f"G{G}_q"], z[f"G{G}_gal"], z[f"G{G}_has"])
         q = z[f"G{Gs[0]}_q"]; D.Fq, D.qpid, D.qbox = f[q], pid[q], q; D.ok = np.ones(len(q), bool); D.Gs = tuple(Gs)
         assert all((z[f"G{G}_q"] == q).all() for G in D.test), "TestG query order differs across gallery sizes"
-        # 11-13 LEAK FIX v3e: reconstruct present AND absent by ONE identical law, so a query-blind classifier cannot
-        # separate them at ANY gallery size. present = the target's frames + random distractor frames up to G images;
-        # absent = a DECOY identity's frames + random distractor frames, with the target's frames explicitly excluded.
+        # 11-13 LEAK FIX v3f: reconstruct present AND absent by ONE identical law (query-blind-indistinguishable), over the
+        # TEST-split gallery ONLY, and never including the query's own image. present = target's other test frames +
+        # distractor test frames; absent = a decoy query-identity's frames + distractors, with the target excluded.
+        tgal = np.flatnonzero(gal & (sp == 1))                   # gallery boxes in the TEST split only (reaudit: no train-split leakage)
+        tboxes_of = {}
+        for b in tgal:
+            tboxes_of.setdefault(int(img[b]), []).append(b)
+        tboxes_of = {k: np.array(v) for k, v in tboxes_of.items()}
         id_frames = {}
-        for b in np.flatnonzero(gal):
+        for b in tgal:
             id_frames.setdefault(int(pid[b]), set()).add(int(img[b]))
         id_frames = {k: np.array(sorted(v), dtype=np.int64) for k, v in id_frames.items()}
-        all_imgs = np.fromiter((k for k in boxes_of), dtype=np.int64, count=len(boxes_of))
-        qids = np.array(sorted(set(int(p) for p in D.qpid)), dtype=np.int64)   # decoy pool: query identities (same distribution as the target focus)
+        test_imgs = np.fromiter((k for k in tboxes_of), dtype=np.int64, count=len(tboxes_of))
+        qids = np.array(sorted(set(int(p) for p in D.qpid)), dtype=np.int64)
+        gtpid_t, gtimg_t = (pid[np.flatnonzero((~gal) & (sp == 1))], img[np.flatnonzero((~gal) & (sp == 1))]) if det else (None, None)
 
-        def build(focus, G, excl, rng):                          # focus identity's frames + distractor fill to G images, with excl's frames kept out
+        def build(focus, G, excl, qimg, rng):                    # focus identity's TEST frames + distractor test frames; excl's frames kept out
             foc = id_frames.get(int(focus), np.zeros(0, np.int64))
-            bad = np.r_[foc, id_frames.get(int(excl), np.zeros(0, np.int64))]
-            pool = all_imgs[~np.isin(all_imgs, bad)]
+            if (foc == qimg).any():
+                foc = foc[foc != qimg]                           # present: the query's own frame is never a candidate
+            elif len(foc) > 1:
+                foc = np.delete(foc, int(rng.integers(len(foc))))   # absent: drop one focus frame so the focus-cluster size matches present (symmetry)
+            bad = np.r_[foc, id_frames.get(int(excl), np.zeros(0, np.int64)), np.array([qimg], np.int64)]
+            pool = test_imgs[~np.isin(test_imgs, bad)]
             nd = max(G - len(foc), 0)
             fill = rng.choice(pool, min(nd, len(pool)), replace=False) if nd and len(pool) else np.zeros(0, np.int64)
             ims = np.r_[foc[:G], fill]
-            return np.concatenate([boxes_of[int(k)] for k in ims]).astype(np.int64) if len(ims) else np.zeros(0, np.int64)
+            return np.concatenate([tboxes_of[int(k)] for k in ims]).astype(np.int64) if len(ims) else np.zeros(0, np.int64)
 
-        def sample(i, E, G, rng):                                # fully SYMMETRIC: pick a decoy query-identity d; present = target focus (d excluded), absent = d focus (target excluded). Swapping the two roles is the only difference -> query-blind-indistinguishable at every G.
-            qp = int(D.qpid[i]); d = qp
+        def sample(i, E, G, rng):                                # symmetric decoy; present = target focus (decoy excluded), absent = decoy focus (target excluded); the query's own image is never a candidate
+            qp = int(D.qpid[i]); qimg = int(img[D.qbox[i]]); d = qp
             while d == qp:
                 d = int(qids[rng.integers(len(qids))])
-            it = build(qp, G, d, rng) if E else build(d, G, qp, rng)
+            it = build(qp, G, d, qimg, rng) if E else build(d, G, qp, qimg, rng)
             return it, (pid[it] == qp)
-        D.sample = sample                                        # recall denominator = target boxes in the present gallery -> episodes() uses int(tm.sum())
+        D.sample = sample
+        if det:                                                  # det recall denominator = true GT target boxes in the test gallery (excluding the query frame), so detector misses still cost recall
+            def ngt(i, G):
+                qp = int(D.qpid[i]); qimg = int(img[D.qbox[i]])
+                return int(((gtpid_t == qp) & (gtimg_t != qimg)).sum())
+            D.ngt = ngt
+        else:                                                    # GT galleries: every target box is a GT box -> episodes() uses int(tm.sum())
+            pass
     return D
 
 
