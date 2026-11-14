@@ -26,18 +26,25 @@ def auc(score, y):
     return float((r[y].sum() - n1 * (n1 + 1) / 2) / (n1 * (len(y) - n1)))
 
 
-def logreg_cv_auc(X, y, folds=5, iters=400, lr=0.3, l2=1e-2):
-    """standardized L2 logistic regression, k-fold CV, pooled out-of-fold AUC"""
-    X = np.asarray(X, float); y = np.asarray(y, float)
-    X = (X - X.mean(0)) / (X.std(0) + 1e-9)
-    n = len(y); idx = np.random.default_rng(1).permutation(n); oof = np.zeros(n)
+def logreg_cv_auc(X, y, groups, folds=5, iters=400, lr=0.3, l2=1e-2):
+    """L2 logistic regression with GROUP k-fold CV (episodes of the same query stay in one fold, so train/val are
+    independent) and standardization fit on the TRAIN fold only (no validation leakage). Pooled out-of-fold AUC."""
+    X = np.asarray(X, float); y = np.asarray(y, float); groups = np.asarray(groups)
+    uq = np.unique(groups); np.random.default_rng(1).shuffle(uq)
+    fold_of = {g: k % folds for k, g in enumerate(uq)}; fo = np.array([fold_of[g] for g in groups])
+    oof = np.full(len(y), np.nan)
     for f in range(folds):
-        te = idx[f::folds]; tr = np.setdiff1d(idx, te); Xtr, ytr = X[tr], y[tr]; w = np.zeros(X.shape[1]); b = 0.0
+        te = np.flatnonzero(fo == f); tr = np.flatnonzero(fo != f)
+        if len(te) == 0 or len(np.unique(y[tr])) < 2:
+            continue
+        mu, sd = X[tr].mean(0), X[tr].std(0) + 1e-9                    # fit standardization on train fold only
+        Xtr = (X[tr] - mu) / sd; Xte = (X[te] - mu) / sd; ytr = y[tr]; w = np.zeros(X.shape[1]); b = 0.0
         for _ in range(iters):
             p = 1 / (1 + np.exp(-(Xtr @ w + b))); gdt = p - ytr
             w -= lr * (Xtr.T @ gdt / len(tr) + l2 * w); b -= lr * gdt.mean()
-        oof[te] = X[te] @ w + b
-    return auc(oof, y)
+        oof[te] = Xte @ w + b
+    m = ~np.isnan(oof)
+    return auc(oof[m], y[m])
 
 
 def feats(D, it):
@@ -60,14 +67,14 @@ def main():
     eps = V.episodes(D, Ks, NQ, seed=0)
     byK = {}
     for (i, it, tm, s, E, K, ngt) in eps:
-        byK.setdefault(int(K), ([], []))
-        byK[int(K)][0].append(feats(D, it)); byK[int(K)][1].append(int(E))
-    print(f"==== {ds}/{enc}/{split}  (query-blind presence AUC; 0.50 = no shortcut) ====", flush=True)
+        byK.setdefault(int(K), ([], [], []))
+        rec = byK[int(K)]; rec[0].append(feats(D, it)); rec[1].append(int(E)); rec[2].append(int(i))   # [2] = query id -> group for group-CV
+    print(f"==== {ds}/{enc}/{split}  (query-blind presence AUC, query-group CV; 0.50 = no shortcut) ====", flush=True)
     for K in sorted(byK):
-        X, y = np.array(byK[K][0], float), np.array(byK[K][1])
+        X, y, g = np.array(byK[K][0], float), np.array(byK[K][1]), np.array(byK[K][2])
         if len(np.unique(y)) < 2 or len(y) < 40:
             continue
-        print(f"  K={K:<6} n={len(y):<5} E1={int(y.sum()):<4} AUC={logreg_cv_auc(X, y):.3f}", flush=True)
+        print(f"  K={K:<6} n={len(y):<5} E1={int(y.sum()):<4} AUC={logreg_cv_auc(X, y, g):.3f}", flush=True)
 
 
 if __name__ == "__main__":

@@ -372,7 +372,7 @@ def main():
     if any(v.endswith("_qn") for v in a.variants.split(",")):
         G.qt = query_targets(Dtr, zpl)
     G.a, G.gam = fit_neff(ztr) if a.law == "fit" else ((1.0, 1.0) if a.law == "nominal" else (1.0, 0.0))
-    G.F0 = torch.from_numpy(ztr["F0"].astype(np.float32)).to(V.dev); print(f"law {a.law}: N_eff = {G.a:.3f} N^{G.gam:.2f}", flush=True); od = os.path.join(V.O, "v5")
+    G.F0 = torch.from_numpy(ztr["F0"].astype(np.float32)).to(V.dev); print(f"law {a.law}: N_eff = {G.a:.3f} N^{G.gam:.2f}", flush=True); od = os.path.join(V.O, "v5"); os.makedirs(od, exist_ok=True)
     for v in a.variants.split(","):
         r = {}; t1 = time.time()
         if v == "selch":                                           # SCH: frozen selector (attn_sel) + correctness head of its choice
@@ -458,7 +458,7 @@ def cross_gs(a, Dtr, trk, eps):
     for _ in range(50):
         q = 1 / (1 + np.exp(-Z @ w)); w -= np.linalg.solve((Z * (q * (1 - q))[:, None]).T @ Z + 1e-2 * np.eye(len(w)), Z.T @ (q - Vtr) + 1e-2 * w)
     sig = lambda x: 1 / (1 + np.exp(-x)); apr = np.array([(V.ap_r1(e[2])[0] * V.recall(e[2], e[6:]), V.ap_r1(e[2])[1]) if e[4] else (np.nan, np.nan) for e in eps])
-    Etr = np.array([e[4] for e in ev_tr]); od = os.path.join(V.O, "v5")
+    Etr = np.array([e[4] for e in ev_tr]); od = os.path.join(V.O, "v5"); os.makedirs(od, exist_ok=True)
     for nm, ftr, fte in (("gs", sig(Z @ w), sig(np.c_[(Xte - mu) / sd, np.ones(len(Xte))] @ w)), ("cos", np.array([e[3][0] for e in ev_tr]), np.array([e[3][0] for e in eps]))):
         r = dict(conf_tr_s0=ftr.astype(np.float64), corr_tr_s0=Vtr, conf_te_s0=fte.astype(np.float64), corr_te_s0=Vte, ap_s0=apr[:, 0], r1_s0=apr[:, 1], Etr=Etr)
         out = os.path.join(od, f"{a.target}_{a.enc}_{nm}_x{a.data}_src.npz"); np.savez(out + ".tmp.npz", **r); os.replace(out + ".tmp.npz", out)
@@ -484,7 +484,7 @@ def cross(a, Dtr, ztr, trk, kt, cpre, t0):
     Gtr, Gpl = G(ztr, Dtr), G(zpl, Dtr); Gte = {}
     for m, z in zte.items():
         Gte[m] = G(z, Dte, share=next(iter(Gte.values()), None))
-    G.lmax = float(np.log(zpl["N"].max())); od = os.path.join(V.O, "v5"); G.lncut = float(np.log(np.quantile(zpl["N"], 0.7)))
+    G.lmax = float(np.log(zpl["N"].max())); od = os.path.join(V.O, "v5"); os.makedirs(od, exist_ok=True); G.lncut = float(np.log(np.quantile(zpl["N"], 0.7)))
     if any(v.endswith("_qn") for v in a.variants.split(",")):
         G.qt = query_targets(Dtr, zpl)
     G.a, G.gam = fit_neff(ztr); G.F0 = torch.from_numpy(ztr["F0"].astype(np.float32)).to(V.dev)  # N_eff law transferred from the source

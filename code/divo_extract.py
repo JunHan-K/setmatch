@@ -53,7 +53,7 @@ def main():
             out.append((i, np.asarray(c), (x0, y0, x1 - x0, y1 - y0)))
         return out
 
-    enc = Encoder(a.enc, a.arch); N = len(recs); d = None; feat = None; box = np.zeros((N, 4), np.int32)
+    enc = Encoder(a.enc, a.arch); N = len(recs); d = None; feat = None; box = np.zeros((N, 4), np.int32); invalid = set()   # boxes too small to crop -> left as 0 features; flagged invalid
     keys = list(by_img)
     with ThreadPoolExecutor(16) as ex:
         for b in range(0, len(keys), 48):
@@ -61,6 +61,8 @@ def main():
             valid = [(i, arr) for i, arr, bx in allc if arr is not None]
             for i, arr, bx in allc:
                 box[i] = bx
+                if arr is None:
+                    invalid.add(i)
             if valid:
                 f = enc(np.stack([a2 for _, a2 in valid])).astype(np.float16)
                 if feat is None:
@@ -72,7 +74,8 @@ def main():
     view = np.array([r[0] for r in recs], np.int8); frame = np.array([r[1] for r in recs], np.int32); gid = np.array([r[2] for r in recs], np.int32)
     od = os.path.join(R, "results/setmatch/divo"); os.makedirs(od, exist_ok=True)
     tmp = os.path.join(od, f"{a.scene}_{a.enc}.tmp.npz")
-    np.savez(tmp, feat=feat, gid=gid, view=view, frame=frame, box=box); os.replace(tmp, os.path.join(od, f"{a.scene}_{a.enc}.npz"))
+    valid = np.array([i not in invalid for i in range(N)], bool)   # False = box too small to crop; downstream must drop these
+    np.savez(tmp, feat=feat, gid=gid, view=view, frame=frame, box=box, valid=valid); os.replace(tmp, os.path.join(od, f"{a.scene}_{a.enc}.npz"))
     print("saved", a.scene, "N", N, "d", d, flush=True)
 
 
