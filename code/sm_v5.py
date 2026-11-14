@@ -36,7 +36,7 @@ R = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 O = os.path.join(R, "results/setmatch")
 M = 64
 dev = "cuda"
-SAMPLER_VER = 8   # bump on any change to sample()/episodes()/scene build so stale episode caches are rebuilt (see sm_v6.cached and gs_stats)
+SAMPLER_VER = 9   # bump on any change to sample()/episodes()/scene build so stale episode caches are rebuilt (see sm_v6.cached and gs_stats)
 
 
 # ---------------------------------------------------------------- data
@@ -75,11 +75,16 @@ def market(enc, split, name="market"):                            # 11-04: name=
     def sample(i, E, K, rng):                                      # 11-13 LEAK FIX v3: absent = the SAME present-construction run for ANOTHER query whose identity is absent here -> present/absent share one distribution
         p = D.qpid[i]
         if K == 0:                                                 # full gallery: present keeps the target & drops a decoy identity, absent drops the target & keeps the decoy. One identity removed per side (candidate-IDENTITY count matches); the present person's SAME-camera boxes are excluded (Market cross-camera rule, now applied at EVERY K -- A1); the trim matches the candidate-BOX count.
-            qc = D.qcam[i]; sp = len(D.items[p]); same = [q for q in byc.get(sp, ()) if q != p]
+            qc = D.qcam[i]; sp = len(D.items[p])
+            xcam = lambda q: bool((D.gcam[D.items[q]] != qc).any())   # decoy must have >=1 box OUTSIDE the query camera, else its same-camera boxes are all removed when it is the absent focus -> it vanishes and the candidate-identity count mismatches (A1 case A)
+            same = [q for q in byc.get(sp, ()) if q != p and xcam(q)]
             if same:
                 d = int(same[int(rng.integers(len(same)))]); sd = sp
-            else:                                                  # no identity shares the target's size -> nearest count (market ~1.3-2% |delta|~1; msmt ~3-4% heavier tail), then trim the larger side so N still matches
-                order = np.argsort(np.abs(idcnt - sp)); d = next(int(D.ids[o]) for o in order if D.ids[o] != p); sd = len(D.items[d])
+            else:                                                  # no exact-size cross-camera decoy -> nearest count among cross-camera identities (market ~1.3-2% |delta|~1; msmt ~3-4% heavier tail), then trim the larger side so N still matches
+                order = np.argsort(np.abs(idcnt - sp)); d = next((int(D.ids[o]) for o in order if D.ids[o] != p and xcam(int(D.ids[o]))), None)
+                if d is None:                                      # degenerate: no cross-camera identity at all -> any decoy (episode will still be dropped if the focus ends up empty)
+                    d = next(int(D.ids[o]) for o in order if D.ids[o] != p)
+                sd = len(D.items[d])
             foc = p if E else d                                    # the "present person" in this episode (target when present, decoy when absent)
             it = np.concatenate([D.items[s] for s in D.ids[D.ids != (d if E else p)]])
             it = it[~((D.gpid[it] == foc) & (D.gcam[it] == qc))]   # A1: the present person's same-camera boxes are never candidates (consistent with present_items at K>0); for the train query this also removes its own box, so no self-match
@@ -439,7 +444,7 @@ def main():
     for v in a.variants.split(","):
         out = os.path.join(od, f"{a.data}_{a.enc}_{v}{a.tag}.npz")
         if v == "base":                                             # cosine-based rules + SDSE / p_null fitted on train episodes
-            ev_tr = episodes(Dtr, TRK[a.data], a.ntrain_eval, 1)
+            ev_tr = episodes(Dtr, trk, a.ntrain_eval, 1)            # use the --trk override (if any), same grid as the other variants below
             lab = lambda ev: np.array([float(E and tm[0]) for i, it, tm, s, E, K, *_ in ev])
             Vtr, Vte = lab(ev_tr), lab(ev_te)
             Xtr = np.nan_to_num(np.array([set_stats(e[3]) for e in ev_tr])); Xte = np.nan_to_num(np.array([set_stats(e[3]) for e in ev_te]))

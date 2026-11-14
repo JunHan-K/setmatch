@@ -13,7 +13,7 @@ R = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 V5 = os.path.join(R, "results/setmatch/v5")
 BASE = ("raw", "margin", "sdse", "pnull")
 LEARN = ("pair_bce", "pair_null", "ctx", "attn", "setmatch", "ctx_cal", "attn_cal", "ctx_w", "attn_w", "ctx_cal_w", "attn_cal_w")
-EXTRAP = dict(market=(200, 0), cuhk=(1000, 2000, 4000), cuhkdet=(1000, 2000, 4000), prw=(2000, 6111), prwdet=(2000, 6111), cuhkseq=(1000, 2000, 4000), prwseq=(2000, 6111))
+EXTRAP = dict(market=(200, 0), cuhk=(1000, 2000, 4000), cuhkdet=(1000, 2000, 4000), prw=(2000, 6111), prwdet=(2000, 6111), cuhkseq=(1000, 2000, 4000), prwseq=(2000, 6111), msmt=(1000, 0), rpif=(1000, 0))
 
 
 def auc(s, y):
