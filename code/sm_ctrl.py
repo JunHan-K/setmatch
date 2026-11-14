@@ -58,8 +58,9 @@ res, dropped = {}, {}
 for key in CELLS:
     z = dict(np.load(os.path.join(V5, f"{key}_meta.npz"))); y = dict(np.load(os.path.join(V5, f"{key}_attn{SMT}.npz"))); yc = dict(np.load(os.path.join(V5, f"{key}_ctx{SMT}.npz")))
     assert (y["Etr"] == z["Etr"]).all(), key
-    d_ = key.split("_")[0]; _cc = np.load(os.path.join(O, "cache", f"{key}{'' if d_ in ('cuhk', 'market') else '_q20'}_k{KT[d_]}_tr.npz"))   # 11-06 audit: catch a stale/mismatched meta vs v6 cache for the mixed rows (gs+sel, sm+cos, gs-mlp)
-    assert (z["raw_tr"] == _cc["s"][:, 0]).all() and (z["Vtr"] == ((_cc["E"] == 1) & _cc["tm"][:, 0])).all(), key + ": meta tr != v6 tr cache"
+    d_ = key.split("_")[0]; _cp = os.path.join(O, "cache", f"{key}{'' if d_ in ('cuhk', 'market') else '_q20'}_k{KT[d_]}_tr.npz")   # 11-06 audit: catch a stale/mismatched meta vs v6 cache for the mixed rows. 11-14: per-cell caches are deleted after training to fit the shared quota, so guard on existence.
+    if os.path.exists(_cp):
+        _cc = np.load(_cp); assert (z["raw_tr"] == _cc["s"][:, 0]).all() and (z["Vtr"] == ((_cc["E"] == 1) & _cc["tm"][:, 0])).all(), key + ": meta tr != v6 tr cache"
     if DROP:
         d = key.split("_")[0]; cc = np.load(os.path.join(O, "cache", f"{key}{'' if d in ('cuhk', 'market') else '_q20'}_k{KT[d]}_te.npz"))
         assert (cc["E"] == z["E"]).all() and ((cc["tm"][:, 0] > 0) == (z["Vte"] > 0)).mean() > 0.999, key
