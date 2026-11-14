@@ -36,7 +36,7 @@ R = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 O = os.path.join(R, "results/setmatch")
 M = 64
 dev = "cuda"
-SAMPLER_VER = 7   # bump on any change to sample()/episodes()/scene build so stale episode caches are rebuilt (see sm_v6.cached and gs_stats)
+SAMPLER_VER = 8   # bump on any change to sample()/episodes()/scene build so stale episode caches are rebuilt (see sm_v6.cached and gs_stats)
 
 
 # ---------------------------------------------------------------- data
@@ -74,23 +74,24 @@ def market(enc, split, name="market"):                            # 11-04: name=
 
     def sample(i, E, K, rng):                                      # 11-13 LEAK FIX v3: absent = the SAME present-construction run for ANOTHER query whose identity is absent here -> present/absent share one distribution
         p = D.qpid[i]
-        if K == 0:                                                 # full gallery: present drops a decoy & keeps the target, absent drops the target. One whole identity is removed on each side, so the candidate-IDENTITY count always matches; the exact-size decoy (or the trim below) also matches the candidate-BOX count.
-            sp = len(D.items[p]); same = [q for q in byc.get(sp, ()) if q != p]
+        if K == 0:                                                 # full gallery: present keeps the target & drops a decoy identity, absent drops the target & keeps the decoy. One identity removed per side (candidate-IDENTITY count matches); the present person's SAME-camera boxes are excluded (Market cross-camera rule, now applied at EVERY K -- A1); the trim matches the candidate-BOX count.
+            qc = D.qcam[i]; sp = len(D.items[p]); same = [q for q in byc.get(sp, ()) if q != p]
             if same:
                 d = int(same[int(rng.integers(len(same)))]); sd = sp
-            else:                                                  # no identity shares the target's size -> nearest count (measured: market ~1.3-2% of queries |delta|~1; msmt ~3-4% with a heavier tail), then trim the larger side so N still matches exactly
+            else:                                                  # no identity shares the target's size -> nearest count (market ~1.3-2% |delta|~1; msmt ~3-4% heavier tail), then trim the larger side so N still matches
                 order = np.argsort(np.abs(idcnt - sp)); d = next(int(D.ids[o]) for o in order if D.ids[o] != p); sd = len(D.items[d])
-            it = np.concatenate([D.items[s] for s in D.ids[D.ids != (d if E else p)]])   # (presence/selection task: a same-camera target still signals presence, so no cross-camera filter here)
-            if D.qpos[i] >= 0:                                      # train: the query is drawn from the gallery
-                it = it[it != D.qpos[i]] if E else np.delete(it, int(rng.integers(len(it))))   # present drops the query's own box (cos~1 self-match); absent drops one RANDOM box so the count matches without a positional pattern
-            r = (sp - sd) if E else (sd - sp)                      # fallback size mismatch: present removed the decoy (sd boxes), absent removed the target (sp); trim the side that removed fewer so present N == absent N (kills a residual presence-via-count shortcut)
+            foc = p if E else d                                    # the "present person" in this episode (target when present, decoy when absent)
+            it = np.concatenate([D.items[s] for s in D.ids[D.ids != (d if E else p)]])
+            it = it[~((D.gpid[it] == foc) & (D.gcam[it] == qc))]   # A1: the present person's same-camera boxes are never candidates (consistent with present_items at K>0); for the train query this also removes its own box, so no self-match
+            a_p = int((D.gcam[D.items[p]] == qc).sum()); a_d = int((D.gcam[D.items[d]] == qc).sum())
+            rem = max(sd + a_p, sp + a_d); r = rem - ((sd + a_p) if E else (sp + a_d))   # match both sides to the SAME removed-box count (present removed decoy sd + target same-cam a_p; absent removed target sp + decoy same-cam a_d) so present N == absent N
             if r > 0:
                 pit = D.gpid[it]; _, inv, cn = np.unique(pit, return_inverse=True, return_counts=True)
-                budget = cn - 1; drop = []                         # never remove an identity's LAST box, so the candidate-identity count stays matched too (not just the box count)
+                budget = cn - 1; drop = []                         # never remove the present person's boxes, never an identity's LAST box (keeps the candidate-identity count matched too)
                 for bi in rng.permutation(len(it)):
                     if len(drop) >= r:
                         break
-                    if pit[bi] != p and budget[inv[bi]] > 0:       # non-target box whose identity still has >1 box
+                    if pit[bi] != foc and budget[inv[bi]] > 0:
                         budget[inv[bi]] -= 1; drop.append(bi)
                 if len(drop) == r:
                     it = np.delete(it, drop)
@@ -207,14 +208,22 @@ def scene(enc, split, name="cuhk", qpp=1):
             return (np.concatenate(cb).astype(np.int64) if cb else E0), incl
 
         def sample(i, E, G, rng):                                # symmetric decoy; present = target focus (decoy excluded), absent = decoy focus (target excluded)
-            qp = int(D.qpid[i]); qimg = int(img[D.qbox[i]]); d = qp
-            while d == qp:
-                d = int(qids[rng.integers(len(qids))])
+            qp = int(D.qpid[i]); qimg = int(img[D.qbox[i]])
+            def pick_decoy():
+                d = qp
+                while d == qp:
+                    d = int(qids[rng.integers(len(qids))])
+                return d
             if E:
-                it, incl = build(qp, G, d, qimg, rng)
-                D._ngt_det = int(((gtpid_t == qp) & np.isin(gtimg_t, incl)).sum())   # recall denominator = GT target boxes in the frames ACTUALLY in this episode's gallery (decoy-co-occurring frames are excluded, so the denominator matches the candidate set exactly)
+                it = E0; ng = 0
+                for _ in range(8):                               # A2: re-draw the decoy if it co-occurs with EVERY target frame (ngt==0 -> no GT target in the gallery). A genuine detection miss (ngt>0 but no proposal) is kept.
+                    it, incl = build(qp, G, pick_decoy(), qimg, rng)
+                    ng = int(((gtpid_t == qp) & np.isin(gtimg_t, incl)).sum())
+                    if ng > 0:
+                        break
+                D._ngt_det = ng                                  # may stay 0 if the target has no gallery frame besides the query -> episodes() drops this present episode (not a detection miss)
             else:
-                it, incl = build(d, G, qp, qimg, rng); D._ngt_det = 0
+                it, incl = build(pick_decoy(), G, qp, qimg, rng); D._ngt_det = 0
             return it, (pid[it] == qp)
         D.sample = sample
         if det:                                                  # det recall denominator (GT-defined, so detector misses still cost recall); computed per-episode from the exact included frames in sample() just above
@@ -249,6 +258,8 @@ def episodes(D, Ks, n, seed):
                     continue
                 s = D.Fg[it] @ D.Fq[i]; o = np.argsort(-s)
                 ngt = D.ngt(i, K) if hasattr(D, "ngt") and E else int(tm.sum())   # proposals: missed targets cost recall
+                if getattr(D, "det", False) and E and ngt == 0:   # A2: a present episode with NO GT target in the gallery is not a detection miss -> drop it (keeps ngt>0 & tm.any()==False, the real detector miss)
+                    continue
                 out.append((i, it[o].astype(np.int32), tm[o], s[o].astype(np.float32), E, K, ngt))
     return out
 
