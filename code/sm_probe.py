@@ -63,7 +63,10 @@ def feats(D, it):
 def main():
     enc, ds, split = sys.argv[1], sys.argv[2], sys.argv[3]
     D = V.market(enc, split, ds) if ds in ("market", "msmt", "rpif") else V.scene(enc, split, ds)
-    Ks = tuple(k for k in (getattr(D, "Gs", None) or V.TEK.get(ds, V.TRK.get(ds, ()))) if 0 <= k <= 20000)
+    if split == "train":                                             # probe the ACTUAL training sizes, not the test-expansion sizes
+        Ks = tuple(k for k in V.TRK.get(ds, ()) if 0 <= k <= 20000)
+    else:
+        Ks = tuple(k for k in (getattr(D, "Gs", None) or V.TEK.get(ds, ())) if 0 <= k <= 20000)
     eps = V.episodes(D, Ks, NQ, seed=0)
     byK = {}
     for (i, it, tm, s, E, K, ngt) in eps:

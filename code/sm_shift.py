@@ -1,10 +1,10 @@
 """Candidate-set-shift analysis: performance as a FUNCTION of gallery size K (the phenomenon the paper is about),
-instead of a single size-aggregated scalar. For cosine / GS / SetWiseMatch it reports, per gallery size K
-(averaged over the ready cells):
-  - strict accuracy at the frozen (train-chosen) threshold,
-  - forced-choice selection accuracy among present queries (cosine top-1 vs SetWiseMatch re-ranking),
-plus SM size-aware frozen thresholding (t = b0 + b1*log N) so acceptance tracks the gallery size. Reads the v5
-prediction dumps; writes results/setmatch/shift.json. CPU only (numpy/scipy)."""
+reported SEPARATELY PER DATASET. Market's K is an identity count and Market K=0 is the FULL gallery, whereas
+CUHK-SYSU / PRW's K is an image count -- different units, so they must not be pooled on one K axis. For
+cosine / GS / SetWiseMatch, per dataset and gallery size K (averaged over encoders): strict accuracy at the
+frozen (train-chosen) threshold, and forced-choice selection accuracy among present queries (cosine top-1 vs
+SetWiseMatch re-ranking). Size-ADAPTIVE thresholding (t = b0 + b1*log N) is evaluated separately in sm_sca.py.
+Reads the v5 prediction dumps; writes results/setmatch/shift.json. CPU only (numpy/scipy)."""
 import glob
 import json
 import os
@@ -33,12 +33,18 @@ def frozen_per_k(xtr, ctr, Etr, xte, cte, E, K, space=None):          # strict a
     return out
 
 
+FAMS = ("cuhkdet", "prwdet", "cuhkseq", "prwseq", "cuhk", "prw", "market", "msmt", "rpif")   # order: longer prefixes first
+
+
 def main():
-    accc, accg, accs = defaultdict(list), defaultdict(list), defaultdict(list)
-    selcos, selsm = defaultdict(list), defaultdict(list)
+    D = {f: {"accc": defaultdict(list), "accg": defaultdict(list), "accs": defaultdict(list),
+             "selc": defaultdict(list), "sels": defaultdict(list)} for f in FAMS}
     for meta in sorted(glob.glob(os.path.join(V5, "*_meta.npz"))):
         key = os.path.basename(meta)[:-9]; a = os.path.join(V5, f"{key}_attn{SMT}.npz")
         if not os.path.exists(a):
+            continue
+        fam = next((f for f in FAMS if key.startswith(f)), None)
+        if fam is None:
             continue
         z = dict(np.load(meta)); E, K = z["E"], z["K"]; y = dict(np.load(a)); S = [s for s in range(20) if f"conf_te_s{s}" in y]
         ac = frozen_per_k(z["raw_tr"], z["Vtr"], z["Etr"], z["raw_te"], z["Vte"], E, K)
@@ -47,23 +53,29 @@ def main():
         for s in S:
             for k, v in frozen_per_k(y[f"conf_tr_s{s}"], y[f"corr_tr_s{s}"], y["Etr"], y[f"conf_te_s{s}"], y[f"corr_te_s{s}"], E, K, "prob").items():
                 asm[k].append(v)
+        g = D[fam]
         for k in ac:
-            accc[k].append(ac[k]); accg[k].append(ag[k]); accs[k].append(float(np.mean(asm[k])))
+            g["accc"][k].append(ac[k]); g["accg"][k].append(ag[k]); g["accs"][k].append(float(np.mean(asm[k])))
         for k in np.unique(K):                                        # forced-choice selection among present: cosine top-1 (Vte) vs SM choice (corr)
             mp = (K == k) & (E == 1)
             if mp.sum() < 20:
                 continue
-            selcos[int(k)].append(float(z["Vte"][mp].mean())); selsm[int(k)].append(float(np.mean([y[f"corr_te_s{s}"][mp].mean() for s in S])))
-    out = {"strict_acc_vs_K": {}, "selection_acc_vs_K": {}}
-    print(f"{'K':>6} {'cells':>5} | {'cos':>6} {'GS':>6} {'SM':>6} {'SM-GS':>7} | {'sel_cos':>7} {'sel_SM':>7}")
-    for k in sorted(accc):
-        row = (float(np.mean(accc[k])), float(np.mean(accg[k])), float(np.mean(accs[k])))
-        sl = (float(np.mean(selcos[k])), float(np.mean(selsm[k]))) if k in selcos else (float("nan"), float("nan"))
-        out["strict_acc_vs_K"][k] = {"cos": row[0], "gs": row[1], "sm": row[2], "cells": len(accc[k])}
-        out["selection_acc_vs_K"][k] = {"cos_top1": sl[0], "sm": sl[1]}
-        print(f"{k:>6} {len(accc[k]):>5} | {row[0]:6.3f} {row[1]:6.3f} {row[2]:6.3f} {row[2]-row[1]:+7.3f} | {sl[0]:7.3f} {sl[1]:7.3f}")
+            g["selc"][int(k)].append(float(z["Vte"][mp].mean())); g["sels"][int(k)].append(float(np.mean([y[f"corr_te_s{s}"][mp].mean() for s in S])))
+    out = {}
+    for fam in FAMS:
+        g = D[fam]
+        if not g["accc"]:
+            continue
+        print(f"\n=== {fam}  ({'identity-count K; K=0=full gallery' if fam in ('market','msmt') else 'image-count K'}) ===")
+        print(f"{'K':>6} {'enc':>4} | {'cos':>6} {'GS':>6} {'SM':>6} {'SM-GS':>7} | {'sel_cos':>7} {'sel_SM':>7}")
+        out[fam] = {}
+        for k in sorted(g["accc"]):
+            row = (float(np.mean(g["accc"][k])), float(np.mean(g["accg"][k])), float(np.mean(g["accs"][k])))
+            sl = (float(np.mean(g["selc"][k])), float(np.mean(g["sels"][k]))) if k in g["selc"] else (float("nan"), float("nan"))
+            out[fam][k] = {"cos": row[0], "gs": row[1], "sm": row[2], "encs": len(g["accc"][k]), "sel_cos": sl[0], "sel_sm": sl[1]}
+            print(f"{k:>6} {len(g['accc'][k]):>4} | {row[0]:6.3f} {row[1]:6.3f} {row[2]:6.3f} {row[2]-row[1]:+7.3f} | {sl[0]:7.3f} {sl[1]:7.3f}")
     json.dump(out, open(os.path.join(R, "results/setmatch/shift.json"), "w"), indent=1)
-    print("wrote results/setmatch/shift.json")
+    print("\nwrote results/setmatch/shift.json  (per dataset; size-adaptive thresholds: see sm_sca.py)")
 
 
 if __name__ == "__main__":

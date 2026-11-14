@@ -77,11 +77,11 @@ def market(enc, split, name="market"):                            # 11-04: name=
             np_ = len(D.items[p]); same = [q for q in byc.get(np_, ()) if q != p]
             if same:
                 d = int(same[int(rng.integers(len(same)))])
-            else:                                                  # no identity shares the target's size -> nearest count
+            else:                                                  # no identity shares the target's size -> nearest count (measured: ~1.3% of market queries, median |n_p-n_d|=1 box of ~13000 -> negligible)
                 order = np.argsort(np.abs(idcnt - np_)); d = next(int(D.ids[o]) for o in order if D.ids[o] != p)
             it = np.concatenate([D.items[s] for s in D.ids[D.ids != (d if E else p)]])   # (presence/selection task: a same-camera target still signals presence, so no cross-camera filter here)
             if D.qpos[i] >= 0:                                      # train: the query is drawn from the gallery
-                it = it[it != D.qpos[i]] if E else it[1:]          # present drops the query's own box (cos~1 self-match); absent drops one box too so the candidate count stays matched
+                it = it[it != D.qpos[i]] if E else np.delete(it, int(rng.integers(len(it))))   # present drops the query's own box (cos~1 self-match); absent drops one RANDOM box so the count matches without a positional pattern
             return it, (D.gpid[it] == p)
         if E:
             it = present_items(i, K, rng)
