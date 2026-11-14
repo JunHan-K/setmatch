@@ -78,10 +78,12 @@ def gs_stats(name, z, make_eps):
     <name>_gsc.npz. The episodes are regenerated with the cache's seeds and must match it exactly (query, presence, N)."""
     p = os.path.join(CACHE, name + "_gsc.npz")
     if os.path.exists(p):
-        return np.load(p)["Cg"]
+        zc = np.load(p)
+        if "_sv" in zc.files and int(zc["_sv"]) == V.SAMPLER_VER:   # reuse the GS-stat cache ONLY if built by the current sampler; otherwise its stats would attach to freshly-generated (different) episodes
+            return zc["Cg"]
     eps = make_eps(); assert len(eps) == len(z["qi"]), (name, len(eps), len(z["qi"]))
     assert all(e[0] == q and int(e[4]) == E_ and len(e[3]) == n for e, q, E_, n in zip(eps, z["qi"], z["E"], z["N"])), name + ": regenerated episodes differ from the cache"
-    Cg = np.nan_to_num(np.array([V.set_stats(e[3]) for e in eps], np.float32)); np.savez(p + ".tmp.npz", Cg=Cg); os.replace(p + ".tmp.npz", p); return Cg
+    Cg = np.nan_to_num(np.array([V.set_stats(e[3]) for e in eps], np.float32)); np.savez(p + ".tmp.npz", Cg=Cg, _sv=np.int64(V.SAMPLER_VER)); os.replace(p + ".tmp.npz", p); return Cg
 
 
 def cached(name, build):

@@ -36,7 +36,7 @@ R = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 O = os.path.join(R, "results/setmatch")
 M = 64
 dev = "cuda"
-SAMPLER_VER = 6   # bump on any change to sample()/episodes()/scene build so stale episode caches are rebuilt (see sm_v6.cached)
+SAMPLER_VER = 7   # bump on any change to sample()/episodes()/scene build so stale episode caches are rebuilt (see sm_v6.cached and gs_stats)
 
 
 # ---------------------------------------------------------------- data
@@ -85,9 +85,15 @@ def market(enc, split, name="market"):                            # 11-04: name=
                 it = it[it != D.qpos[i]] if E else np.delete(it, int(rng.integers(len(it))))   # present drops the query's own box (cos~1 self-match); absent drops one RANDOM box so the count matches without a positional pattern
             r = (sp - sd) if E else (sd - sp)                      # fallback size mismatch: present removed the decoy (sd boxes), absent removed the target (sp); trim the side that removed fewer so present N == absent N (kills a residual presence-via-count shortcut)
             if r > 0:
-                cand = np.flatnonzero(D.gpid[it] != p)             # never trim the target in a present episode (absent has none); trimming non-target boxes leaves the candidate-identity count essentially unchanged
-                if len(cand) >= r:
-                    it = np.delete(it, rng.choice(cand, r, replace=False))
+                pit = D.gpid[it]; _, inv, cn = np.unique(pit, return_inverse=True, return_counts=True)
+                budget = cn - 1; drop = []                         # never remove an identity's LAST box, so the candidate-identity count stays matched too (not just the box count)
+                for bi in rng.permutation(len(it)):
+                    if len(drop) >= r:
+                        break
+                    if pit[bi] != p and budget[inv[bi]] > 0:       # non-target box whose identity still has >1 box
+                        budget[inv[bi]] -= 1; drop.append(bi)
+                if len(drop) == r:
+                    it = np.delete(it, drop)
             return it, (D.gpid[it] == p)
         if E:
             it = present_items(i, K, rng)
