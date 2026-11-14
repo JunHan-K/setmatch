@@ -88,9 +88,9 @@ def cached(name, build):
     p = os.path.join(CACHE, name + ".npz")
     if os.path.exists(p):
         z = dict(np.load(p))
-        if "tq" in z:                                              # caches from before _qcal are rebuilt
+        if "tq" in z and int(z.get("_sv", -1)) == V.SAMPLER_VER:   # reuse ONLY caches built by the current sampler version; a stale sampler (or pre-_sv cache) forces a rebuild so results always match the live sampler
             return z
-    t0 = time.time(); z = build(); os.makedirs(CACHE, exist_ok=True); tmp = f"{p}.{os.getpid()}.tmp.npz"; np.savez(tmp, **z); os.replace(tmp, p)
+    t0 = time.time(); z = build(); z["_sv"] = np.int64(V.SAMPLER_VER); os.makedirs(CACHE, exist_ok=True); tmp = f"{p}.{os.getpid()}.tmp.npz"; np.savez(tmp, **z); os.replace(tmp, p)
     print(f"  built {name} in {time.time() - t0:.0f}s", flush=True); return z
 
 

@@ -36,6 +36,7 @@ R = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 O = os.path.join(R, "results/setmatch")
 M = 64
 dev = "cuda"
+SAMPLER_VER = 6   # bump on any change to sample()/episodes()/scene build so stale episode caches are rebuilt (see sm_v6.cached)
 
 
 # ---------------------------------------------------------------- data
@@ -73,15 +74,20 @@ def market(enc, split, name="market"):                            # 11-04: name=
 
     def sample(i, E, K, rng):                                      # 11-13 LEAK FIX v3: absent = the SAME present-construction run for ANOTHER query whose identity is absent here -> present/absent share one distribution
         p = D.qpid[i]
-        if K == 0:                                                 # full gallery: present drops a decoy & keeps the target, absent drops the target. The decoy has the SAME image count as the target, so BOTH identity count and candidate count match exactly.
-            np_ = len(D.items[p]); same = [q for q in byc.get(np_, ()) if q != p]
+        if K == 0:                                                 # full gallery: present drops a decoy & keeps the target, absent drops the target. One whole identity is removed on each side, so the candidate-IDENTITY count always matches; the exact-size decoy (or the trim below) also matches the candidate-BOX count.
+            sp = len(D.items[p]); same = [q for q in byc.get(sp, ()) if q != p]
             if same:
-                d = int(same[int(rng.integers(len(same)))])
-            else:                                                  # no identity shares the target's size -> nearest count (measured: ~1.3% of market queries, median |n_p-n_d|=1 box of ~13000 -> negligible)
-                order = np.argsort(np.abs(idcnt - np_)); d = next(int(D.ids[o]) for o in order if D.ids[o] != p)
+                d = int(same[int(rng.integers(len(same)))]); sd = sp
+            else:                                                  # no identity shares the target's size -> nearest count (measured: market ~1.3-2% of queries |delta|~1; msmt ~3-4% with a heavier tail), then trim the larger side so N still matches exactly
+                order = np.argsort(np.abs(idcnt - sp)); d = next(int(D.ids[o]) for o in order if D.ids[o] != p); sd = len(D.items[d])
             it = np.concatenate([D.items[s] for s in D.ids[D.ids != (d if E else p)]])   # (presence/selection task: a same-camera target still signals presence, so no cross-camera filter here)
             if D.qpos[i] >= 0:                                      # train: the query is drawn from the gallery
                 it = it[it != D.qpos[i]] if E else np.delete(it, int(rng.integers(len(it))))   # present drops the query's own box (cos~1 self-match); absent drops one RANDOM box so the count matches without a positional pattern
+            r = (sp - sd) if E else (sd - sp)                      # fallback size mismatch: present removed the decoy (sd boxes), absent removed the target (sp); trim the side that removed fewer so present N == absent N (kills a residual presence-via-count shortcut)
+            if r > 0:
+                cand = np.flatnonzero(D.gpid[it] != p)             # never trim the target in a present episode (absent has none); trimming non-target boxes leaves the candidate-identity count essentially unchanged
+                if len(cand) >= r:
+                    it = np.delete(it, rng.choice(cand, r, replace=False))
             return it, (D.gpid[it] == p)
         if E:
             it = present_items(i, K, rng)
@@ -187,24 +193,27 @@ def scene(enc, split, name="cuhk", qpp=1):
                 di = int(rng.integers(len(foc))); dropped = int(foc[di]); foc = np.delete(foc, di)   # absent: drop one focus frame to match present losing the query frame
             bad = np.r_[foc, xf, np.array([qimg, dropped], np.int64)]
             pool = test_imgs[~np.isin(test_imgs, bad)]
-            nd = max(G - len(foc), 0)
+            incl = foc[:G]                                        # focus frames ACTUALLY placed in the gallery (xf-co-occurring frames and qimg already removed)
+            nd = max(G - len(incl), 0)
             fill = rng.choice(pool, min(nd, len(pool)), replace=False) if nd and len(pool) else E0
-            ims = np.r_[foc[:G], fill]
+            ims = np.r_[incl, fill]
             cb = [tboxes_of[int(k)] for k in ims if int(k) in tboxes_of]   # candidate boxes (a GT-only frame with no proposal contributes none, but still counts for recall)
-            return np.concatenate(cb).astype(np.int64) if cb else E0
+            return (np.concatenate(cb).astype(np.int64) if cb else E0), incl
 
         def sample(i, E, G, rng):                                # symmetric decoy; present = target focus (decoy excluded), absent = decoy focus (target excluded)
             qp = int(D.qpid[i]); qimg = int(img[D.qbox[i]]); d = qp
             while d == qp:
                 d = int(qids[rng.integers(len(qids))])
-            it = build(qp, G, d, qimg, rng) if E else build(d, G, qp, qimg, rng)
+            if E:
+                it, incl = build(qp, G, d, qimg, rng)
+                D._ngt_det = int(((gtpid_t == qp) & np.isin(gtimg_t, incl)).sum())   # recall denominator = GT target boxes in the frames ACTUALLY in this episode's gallery (decoy-co-occurring frames are excluded, so the denominator matches the candidate set exactly)
+            else:
+                it, incl = build(d, G, qp, qimg, rng); D._ngt_det = 0
             return it, (pid[it] == qp)
         D.sample = sample
-        if det:                                                  # det recall denominator = GT target boxes in the target's gallery frames (GT-defined, so detector misses still cost recall)
+        if det:                                                  # det recall denominator (GT-defined, so detector misses still cost recall); computed per-episode from the exact included frames in sample() just above
             def ngt(i, G):
-                qp = int(D.qpid[i]); qimg = int(img[D.qbox[i]])
-                foc = appear.get(qp, E0); foc = foc[foc != qimg][:G]
-                return int(((gtpid_t == qp) & (gtimg_t != qimg) & np.isin(gtimg_t, foc)).sum())
+                return int(getattr(D, "_ngt_det", 0))
             D.ngt = ngt
     return D
 
