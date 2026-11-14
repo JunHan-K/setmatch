@@ -57,10 +57,12 @@ def market(enc, split, name="market"):                            # 11-04: name=
     D.Fg, D.gpid, D.gcam = f[g], pid[g], cam[g]
     D.ids = np.unique(D.gpid); D.items = {p: np.flatnonzero(D.gpid == p) for p in D.ids}
     D.ok = np.array([(D.gcam[D.items.get(p, np.zeros(0, int))] != c).any() for p, c in zip(D.qpid, D.qcam)])
+    gpos = {int(x): j for j, x in enumerate(g)}                    # original index -> gallery position
+    D.qpos = np.array([gpos.get(int(x), -1) for x in q])          # the query's own gallery position (train: in the gallery; test: -1) -> drop the self-match
     byc = {}                                                       # gallery identities grouped by image count (for an exact-size K=0 decoy)
-    for q in D.ids:
-        byc.setdefault(len(D.items[q]), []).append(int(q))
-    idcnt = np.array([len(D.items[q]) for q in D.ids])
+    for qq in D.ids:
+        byc.setdefault(len(D.items[qq]), []).append(int(qq))
+    idcnt = np.array([len(D.items[qq]) for qq in D.ids])
 
     def present_items(ii, K, rng):                                 # K-1 distractor identities + the "focus" identity's images (identical layout for every query)
         p = D.qpid[ii]; pool = D.ids[D.ids != p]
@@ -78,6 +80,8 @@ def market(enc, split, name="market"):                            # 11-04: name=
             else:                                                  # no identity shares the target's size -> nearest count
                 order = np.argsort(np.abs(idcnt - np_)); d = next(int(D.ids[o]) for o in order if D.ids[o] != p)
             it = np.concatenate([D.items[s] for s in D.ids[D.ids != (d if E else p)]])   # (presence/selection task: a same-camera target still signals presence, so no cross-camera filter here)
+            if E and D.qpos[i] >= 0:
+                it = it[it != D.qpos[i]]                            # never the query's own box (train draws the query from the gallery -> would be a cos~1 self-match)
             return it, (D.gpid[it] == p)
         if E:
             it = present_items(i, K, rng)
