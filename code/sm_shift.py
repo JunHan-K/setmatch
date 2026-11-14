@@ -12,7 +12,7 @@ from collections import defaultdict
 
 import numpy as np
 
-R = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+R = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 V5 = os.path.join(R, "results/setmatch/v5")
 SMT = os.environ.get("SM_TAG", "_s10main")
 lg = lambda x: np.log(np.clip(x, 1e-7, 1 - 1e-7)) - np.log1p(-np.clip(x, 1e-7, 1 - 1e-7))
@@ -24,7 +24,7 @@ def sc(x, c, E, grid):                                                 # strict 
 
 
 def frozen_per_k(xtr, ctr, Etr, xte, cte, E, K, space=None):          # strict accuracy per K at a single train-chosen threshold
-    if space in ("prob", "logit"):
+    if space == "prob":                                              # only posteriors are logit-transformed; GS 'sdse' is ALREADY a logit (do NOT transform it again)
         xtr, xte = lg(xtr), lg(xte)
     grid = np.unique(np.quantile(xtr, np.linspace(0, 1, 401))); g1, g0 = sc(xtr, ctr, Etr, grid); j = int(np.argmax(0.5 * g1 + 0.5 * g0))
     out = {}

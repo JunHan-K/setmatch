@@ -80,8 +80,8 @@ def market(enc, split, name="market"):                            # 11-04: name=
             else:                                                  # no identity shares the target's size -> nearest count
                 order = np.argsort(np.abs(idcnt - np_)); d = next(int(D.ids[o]) for o in order if D.ids[o] != p)
             it = np.concatenate([D.items[s] for s in D.ids[D.ids != (d if E else p)]])   # (presence/selection task: a same-camera target still signals presence, so no cross-camera filter here)
-            if E and D.qpos[i] >= 0:
-                it = it[it != D.qpos[i]]                            # never the query's own box (train draws the query from the gallery -> would be a cos~1 self-match)
+            if D.qpos[i] >= 0:                                      # train: the query is drawn from the gallery
+                it = it[it != D.qpos[i]] if E else it[1:]          # present drops the query's own box (cos~1 self-match); absent drops one box too so the candidate count stays matched
             return it, (D.gpid[it] == p)
         if E:
             it = present_items(i, K, rng)
